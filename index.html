@@ -101,6 +101,8 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 #ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:10}
 #ovm{font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,6.5vw,76px);letter-spacing:.1em;opacity:0;transform:scale(.6);transition:opacity .14s,transform .14s;text-align:center}
 #ovm.show{opacity:1;transform:scale(1)}
+#ovm.spike-pop{font-size:clamp(72px,13vw,140px);letter-spacing:.06em;animation:spikepop .55s cubic-bezier(.15,1.4,.4,1) forwards}
+@keyframes spikepop{0%{opacity:0;transform:scale(.3) rotate(-6deg)}40%{opacity:1;transform:scale(1.18) rotate(2deg)}70%{transform:scale(.95) rotate(-1deg)}100%{opacity:1;transform:scale(1) rotate(0deg)}}
 #sflash{position:absolute;inset:0;background:transparent;pointer-events:none;z-index:9;transition:background .06s}
 #sflash.on{background:#ff572238}
 #sflash.block{background:#00ff8828}
@@ -155,10 +157,10 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
   </div>
   <div class="ctrl-row-outer">
     <div class="cc"><h4>Move</h4><p><span class="k">A</span><span class="k">D</span> move<br><span class="k">Space</span> jump · <span class="k">F</span> serve</p></div>
-    <div class="cc"><h4>Hits (P1)</h4><p><span class="k b">Hold E</span> Bump<br><span class="k s">Hold Q</span> Set<br><span class="k sp">Hold Click</span> Spike</p></div>
+    <div class="cc"><h4>Hits (P1)</h4><p><span class="k b">Hold E</span> Bump<br><span class="k s">Hold Q</span> Set<br><span class="k sp">Click (air)</span> Spike</p></div>
     <div class="cc"><h4>Extra (P1)</h4><p><span class="k bl">Hold R</span> Block<br><span class="k" style="border-color:#ff2d78;color:#ff2d78">Hold T</span> Tip<br>(tip = soft touch)</p></div>
     <div class="cc"><h4>P2 Keys</h4><p><span class="k b">Hold K</span> Bump<br><span class="k s">Hold L</span> Set<br><span class="k sp">Hold Click</span> Spike</p></div>
-    <div class="cc"><h4>Rules</h4><p>Jump first, then spike!<br>Max 3 hits/side<br>Rally = faster ball</p></div>
+    <div class="cc"><h4>Rules</h4><p>Jump then Click = Spike<br>Or Click while jumping<br>Max 3 hits/side</p></div>
   </div>
 </div>
 
@@ -208,7 +210,11 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
   <div id="rallybar"><div id="rallyfill"></div></div>
   <div id="skbar">
     <div class="skgrp" id="skleft"></div>
-    <button id="bkbtn" onclick="goMenu()">← Menu</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="bkbtn" onclick="goMenu()">← Menu</button>
+      <span id="brain-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
+      <button onclick="dtForget()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff572299;padding:2px 7px;border-radius:3px;cursor:pointer" title="Wipe AI memory">🗑 forget</button>
+    </div>
     <div class="skgrp" id="skright"></div>
   </div>
   <div id="cw">
@@ -241,7 +247,12 @@ function resize(){const el=document.getElementById('cw');W=el.clientWidth;H=el.c
 window.addEventListener('resize',resize);
 
 const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
-const WPWIN=7,WSWIN=2,HR=BR+PW*4.5,BLOCK_R=BR+PW*5.0,MAXCHARGE=1600;
+const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
+
+const HR=BR+PW*4.5;          // normal hit range (bump/set/tip)
+const SPIKE_HR=BR+PW*6;      // spike range — reasonable, not huge
+const BLOCK_R=BR+PW*5.0;
+
 const fl=()=>H-FP,nx=()=>W/2,nt=()=>fl()-H*NHF;
 
 const THEMES=[
@@ -280,8 +291,9 @@ function playTone(freq,dur,type='sine',vol=0.18,decay=0.15){
 function sndBump(){playTone(180,0.18,'sine',0.15);}
 function sndSet(){playTone(280,0.14,'sine',0.12);}
 function sndSpike(){
-  playTone(120,0.08,'sawtooth',0.22);
-  setTimeout(()=>playTone(200,0.12,'square',0.15),40);
+  playTone(80,0.06,'sawtooth',0.35);
+  setTimeout(()=>playTone(160,0.1,'square',0.25),30);
+  setTimeout(()=>playTone(320,0.18,'sine',0.18),70);
 }
 function sndBlock(){playTone(320,0.1,'square',0.2);playTone(160,0.15,'sine',0.15);}
 function sndPoint(){
@@ -320,26 +332,43 @@ function slotMinX(s){return s<2?0:nx()+NW/2+2;}
 function slotMaxX(s){return s<2?nx()-NW/2-2:W;}
 function slotStartX(s){return[W*.20,W*.08,W*.72,W*.86][s];}
 
+// ── HELPERS ───────────────────────────────────────────────────────────────
+function isAirborne(p){return p&&!p.onGround;}
+
+// Hit-range check
+function inRangeForSkill(slot,skill){
+  const p=PL[slot];if(!p)return false;
+  const r=skill==='spike'?SPIKE_HR:HR;
+  return Math.sqrt((ball.x-p.x-PW/2)**2+(ball.y-p.y)**2)<r;
+}
+function inRange(slot){return inRangeForSkill(slot,'bump');}
+
+// spikeHeld[slot]=true when mouse is held. spikeFired resets on landing.
+let spikeHeld=[false,false,false,false];
+let spikeFired=[false,false,false,false];
+let spikeCool=[0,0,0,0]; // frames before this slot can spike again
+
 // ── POWER METER ───────────────────────────────────────────────────────────
 function startCharge(slot,skill){
   if(phase!=='playing')return;
   if(charge[slot])return;
   const side=slotSide(slot);
   if(sideHits[side]>=3){flashWrong(slot,skill);return;}
-  const bside=side===0?ball.x<nx():ball.x>=nx();
-  if(!bside){flashWrong(slot,skill);return;}
-  
-  if(skill==='spike'){
-    // Only reject if we already have 3 hits (checked above). 
-    // onGround is checked at release/hit time, not here, so hold-then-jump works.
-  }
-  
+
   if(skill==='block'){
     blockingSlots.add(slot);
     updateSkillBar();
     if(gmode==='online'&&ws?.readyState===1)ws.send(JSON.stringify({type:'block',blocking:true}));
     return;
   }
+
+  // Spike: allow charging even on ground — fires on release if airborne
+  // Other skills: ball must be on your side to start charging
+  if(skill!=='spike'){
+    const bside=side===0?ball.x<nx():ball.x>=nx();
+    if(!bside){flashWrong(slot,skill);return;}
+  }
+
   charge[slot]={t:Date.now(),skill};
 }
 
@@ -414,34 +443,29 @@ function updateSkillBar(){
     if(ctr){ctr.textContent=rem;ctr.className='hc'+(rem<=1?' warn':'');}
     ['bump','set','spike','tip','block'].forEach(sk=>{
       const el=document.getElementById(`skb-${slot}-${sk}`);if(!el)return;
-      el.className='skb';
+      el.className='skb';el.style.boxShadow='';
       if(sk==='block'){
         if(blockingSlots.has(slot))el.classList.add('blocking-active','av-block');
         else el.classList.add('av-block');
         return;
       }
       if(hn>=3){el.classList.add('used');return;}
-      // Spike: locked only when on ground. When airborne, always show available (orange glow).
       if(sk==='spike'){
-        if(PL[slot]?.onGround){el.classList.add('locked');return;}
-        // Airborne: show as available regardless of ball side
+        // Spike always shows as available when not used up — player just needs to jump
+        const p=PL[slot];
+        const airborne=p&&isAirborne(p);
         el.classList.add('av-spike');
-        if(phase==='playing'&&inRange(slot))el.style.boxShadow='0 0 12px currentColor';
-        else el.style.boxShadow='';
+        if(airborne&&phase==='playing'&&inRangeForSkill(slot,'spike'))
+          el.style.boxShadow='0 0 16px currentColor';
         return;
       }
       if(!bside){el.classList.add('locked');return;}
       el.classList.add('av-'+sk);
       if(phase==='playing'&&inRange(slot))el.style.boxShadow='0 0 12px currentColor';
-      else el.style.boxShadow='';
     });
   });
   const pct=Math.min(100,rallyHits/16*100);
   const fill=document.getElementById('rallyfill');if(fill)fill.style.width=pct+'%';
-}
-function inRange(slot){
-  const p=PL[slot];if(!p)return false;
-  return Math.sqrt((ball.x-p.x-PW/2)**2+(ball.y-p.y)**2)<HR;
 }
 function flashWrong(slot,skill){
   const el=document.getElementById(`skb-${slot}-${skill}`)||document.getElementById(`skb-${slot}-bump`);
@@ -490,11 +514,14 @@ cv.addEventListener('mousedown',e=>{
   if(e.button!==0||phase!=='playing')return;e.preventDefault();
   localSlots().forEach(slot=>{
     const p=PL[slot];if(!p)return;
-    // Always register spike charge on click — onGround checked at release
-    startCharge(slot,'spike');
+    spikeHeld[slot]=true;spikeFired[slot]=false;
+    if(!p.onGround){spikeFired[slot]=true;doHitLocal(slot,0.9,'spike');}
   });
 });
-cv.addEventListener('mouseup',e=>{if(e.button!==0)return;localSlots().forEach(s=>releaseCharge(s,'spike'));});
+cv.addEventListener('mouseup',e=>{
+  if(e.button!==0)return;
+  localSlots().forEach(s=>{spikeHeld[s]=false;spikeFired[s]=false;});
+});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
 
 let lastKS=0;
@@ -510,41 +537,32 @@ function doHitLocal(slot,pwr,skill){
   if(phase!=='playing')return;
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
-  
-  // For all skills: ball must be on your side (generous margin for spike)
+
   if(skill==='spike'){
-    // Spike requires: airborne + ball on your side (with generous net margin)
-    if(p.onGround){flashWrong(slot,'spike');return;}
-    const ballOnSide=(side===0?ball.x<nx()+BR*3:ball.x>=nx()-BR*3);
-    if(!ballOnSide){flashWrong(slot,'spike');return;}
+    // Caller guarantees player is airborne. Check cooldown to prevent double-spiking same ball.
+    if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
   } else {
+    // Non-spike: ball on your side (normal margin)
     if(side===0?ball.x>=nx():ball.x<nx()){flashWrong(slot,skill);return;}
+    if(!inRange(slot)){flashWrong(slot,skill);return;}
   }
-  
-  if(!inRange(slot)){flashWrong(slot,skill);return;}
+
   if(sideHits[side]>=3){flashWrong(slot,skill);return;}
-  
-  // FIX: Double-touch foul only applies within the SAME rally sequence on the same side
-  // Reset lastHitSlot when the side changes so you can hit again after opponent returns
-  if(lastHitSide>=0&&lastHitSide!==side){
-    // Ball came back from other side — reset slot tracking
-    lastHitSlot=-1;
-  }
-  if(slot===lastHitSlot&&lastHitSide===side){
-    // Same player hitting twice in a row on same side — foul
-    flashWrong(slot,skill);return;
-  }
-  
-  if(lastHitSide>=0&&lastHitSide!==side)sideHits[1-side]=0;
+
+  // Reset side counter when ball crosses net
+  if(lastHitSide>=0&&lastHitSide!==side){sideHits[1-side]=0;lastHitSlot=-1;}
+  // Double-touch foul only for non-spike hits (in 1v1 the same player must hit all 3)
+  if(skill!=='spike'&&slot===lastHitSlot&&lastHitSide===side&&sideHits[side]>0){flashWrong(slot,skill);return;}
+
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
-  
+
   const spM=Math.min(1.4,1+rallyHits*0.035);
   const pr=Math.max(0.3,Math.min(1,pwr));
   const cxp=p.x+PW/2,cyp=p.y;
   const ddx=ball.x-cxp,ddy=ball.y-cyp;
   const dl=Math.max(1,Math.sqrt(ddx*ddx+ddy*ddy));
   const ndx=ddx/dl,ndy=ddy/dl,md=BR+PW*1.1;
-  
+
   if(skill==='bump'){
     const drift=(side===0?1:-1)*(0.5+pr*0.8);
     ball.vx=drift*spM;ball.vy=-(14+pr*7)*spM;
@@ -559,14 +577,52 @@ function doHitLocal(slot,pwr,skill){
     ball.vx=dir*(3+pr*2);ball.vy=-(6+pr*3);
     doFlash('TIP','#ff2d78');spawnParts(ball.x,ball.y,'#ff2d78',8);flashTap(slot,'tip');sndTip();
   } else {
-    // SPIKE
-    const dir=side===0?1:-1,spd=(8+pr*7)*spM;
-    ball.vx=dir*spd*0.82;ball.vy=-spd*0.55;
-    doFlash('SPIKE!','#ff5722');spawnParts(ball.x,ball.y,'#ff5722',30);flashTap(slot,'spike');
-    sndSpike();shake(10,12);
-    const sf=document.getElementById('sflash');sf.classList.add('on');setTimeout(()=>sf.classList.remove('on'),100);
+    // SPIKE — physics-based auto-aim
+    // We know: ball start pos (bx,by), gravity G, net position (netX, netTop)
+    // Pick vx strong enough to clear net, solve vy so ball lands in opponent court
+    const spikeDir = side===0?1:-1;
+    const netX = nx();
+    const netTop = nt(); // top of net y (smaller = higher on screen)
+    const bx = ball.x, by = ball.y;
+
+    // How far horizontally to the net and to a target landing spot
+    const dxNet = Math.abs(netX - bx);          // dist to net
+    const landTarget = side===0                   // target x in opponent court
+      ? netX + Math.max(60, (W - netX)*0.45)
+      : netX - Math.max(60, (netX)*0.45);
+    const dxLand = Math.abs(landTarget - bx);    // dist to landing target
+
+    // Choose vx: fast enough to cover the distance, scaled by power
+    const basevx = Math.max(9, dxLand / 22);     // needs ~22 frames to land
+    const vx = (8 + pr*8) * spM * spikeDir;
+
+    // Simulate how many frames until ball crosses net at this vx
+    const framesNet = dxNet / Math.abs(vx);
+
+    // We want ball to be ABOVE netTop when it crosses net, with margin
+    // y at netCross = by + vy*framesNet + 0.5*G*framesNet^2
+    // Solve: vy so that y at framesNet = netTop - 10 (10px clearance above net)
+    const clearance = netTop - 20; // we want ball here when crossing net
+    // clearance = by + vy*f + 0.5*G*f*f  =>  vy = (clearance-by - 0.5*G*f*f) / f
+    const f = framesNet;
+    let vy = (clearance - by - 0.5*G*f*f) / Math.max(1,f);
+
+    // Clamp vy: must be going downward (positive) or only slightly upward
+    // If vy is too negative (ball would go way up) clamp it
+    vy = Math.max(vy, -4);  // allow slight upward arc but not a lob
+    vy = Math.min(vy, 14);  // cap downward speed
+
+    ball.vx = vx;
+    ball.vy = vy;
+
+    spikeCool[slot]=22;
+    doFlash('SPIKE!','#ff5722',700,true);
+    spawnParts(ball.x,ball.y,'#ff5722',50);spawnParts(ball.x,ball.y,'#ffcc02',20);
+    flashTap(slot,'spike');sndSpike();shake(14,18);
+    const sf=document.getElementById('sflash');sf.classList.add('on');setTimeout(()=>sf.classList.remove('on'),180);
     localStats.spikes[side]++;
   }
+  // Push ball away from player
   ball.x=cxp+ndx*(md+1);ball.y=cyp+ndy*(md+1);
   updateSkillBar();
 }
@@ -710,19 +766,28 @@ function showLocalStats(win){showStats(localStats,localStats.longestRally,win);}
 function serveLocal(){
   if(phase!=='waiting')return;
   phase='playing';hideOv();setHm('');
-  lastHitSlot=-1; // FIX: Reset slot tracking on each serve
+  lastHitSlot=-1;
   ball.vx=0;ball.vy=-(11+Math.random()*2);
   if(rallyHits===0)localStats.aces[slotSide(serving)]++;
 }
 
 function physTick(){
+  // Tick spike cooldowns
+  spikeCool=spikeCool.map(v=>Math.max(0,v-1));
   PL.forEach((p,slot)=>{
     if(!p)return;
     if(gmode==='ai'&&slot===2){aiTick();return;}
     if(!localSlots().includes(slot))return;
     const lk=slot<2?'a':'ArrowLeft',rk=slot<2?'d':'ArrowRight',jk=slot<2?' ':'ArrowUp';
     if(keys[lk])p.x-=PS;else if(keys[rk])p.x+=PS;
-    if(keys[jk]&&p.onGround){p.vy=JV;p.onGround=false;}
+    // Jump
+    if(keys[jk]&&p.onGround){
+      p.vy=JV;p.onGround=false;
+      spikeFired[slot]=false; // reset so spike can fire this jump
+      if(spikeHeld[slot]&&!spikeFired[slot]){spikeFired[slot]=true;doHitLocal(slot,0.9,'spike');}
+    } else if(!p.onGround&&spikeHeld[slot]&&!spikeFired[slot]){
+      spikeFired[slot]=true;doHitLocal(slot,0.9,'spike');
+    }
     gravTick(p,slot);
   });
   ballTrail.push({x:ball.x,y:ball.y,life:1});
@@ -754,58 +819,224 @@ function physTick(){
 
 function gravTick(p,slot){
   p.vy+=G;p.y+=p.vy;
-  if(p.y+PH>=fl()){p.y=fl()-PH;p.vy=0;p.onGround=true;}
+  if(p.y+PH>=fl()){p.y=fl()-PH;p.vy=0;p.onGround=true;spikeFired[slot]=false;}
+  else p.onGround=false;
   p.x=Math.max(slotMinX(slot),Math.min(slotMaxX(slot)-PW,p.x));
 }
 
-// ── AI ────────────────────────────────────────────────────────────────────
+// ── AI — Decision Tree Learning ───────────────────────────────────────────
 function predictBall(){
   let px=ball.x,py=ball.y,pvx=ball.vx,pvy=ball.vy,st=0;
-  while(py<fl()-BR&&st<120){pvy+=G;px+=pvx;py+=pvy;st++;}
+  while(py<fl()-BR&&st<220){pvy+=G;px+=pvx;py+=pvy;st++;}
   return{x:px,steps:st};
 }
+function humanX(){return PL[0]?PL[0].x+PW/2:W*0.25;}
+
+// ── Minimal ID3 Decision Tree ─────────────────────────────────────────────
+// Samples: {hxB, bxB, lastShot, zone, win}
+// hxB = human x bucketed (0-2), bxB = ball x bucketed (0-2)
+// lastShot = human's last hit type (0=bump,1=set,2=spike)
+// zone = which zone AI spiked to (0=near,1=mid,2=deep), win = did AI win
+
+let dtSamples=[];
+let dtTree=null;
+let dtPending=null;   // pending sample waiting for point outcome
+let dtLastHumanShot=0;
+let dtAdaptSpd=1.0;
+
+function bucket(v,lo,hi,n){return Math.min(n-1,Math.max(0,Math.floor((v-lo)/(hi-lo)*n)));}
+
+function dtEntropy(items){
+  if(!items.length)return 0;
+  const p=items.filter(d=>d.win).length/items.length;
+  if(p===0||p===1)return 0;
+  return-(p*Math.log2(p)+(1-p)*Math.log2(1-p));
+}
+function dtBuild(items,depth){
+  if(!items.length)return{leaf:true,zone:1};
+  const wins=items.filter(d=>d.win).length;
+  if(wins===items.length||wins===0||items.length<3||depth>=3)
+    return{leaf:true,zone:Math.round(items.reduce((s,d)=>s+d.zone,0)/items.length)};
+  const base=dtEntropy(items);
+  let bestGain=-1,bestF=null,bestV=null;
+  for(const f of['hxB','bxB','lastShot']){
+    for(const v of[...(new Set(items.map(d=>d[f])))]) {
+      const L=items.filter(d=>d[f]===v),R=items.filter(d=>d[f]!==v);
+      if(!L.length||!R.length)continue;
+      const g=base-(L.length/items.length*dtEntropy(L)+R.length/items.length*dtEntropy(R));
+      if(g>bestGain){bestGain=g;bestF=f;bestV=v;}
+    }
+  }
+  if(bestGain<=0||!bestF)return{leaf:true,zone:Math.round(items.reduce((s,d)=>s+d.zone,0)/items.length)};
+  const L=items.filter(d=>d[bestF]===bestV),R=items.filter(d=>d[bestF]!==bestV);
+  return{leaf:false,f:bestF,v:bestV,L:dtBuild(L,depth+1),R:dtBuild(R,depth+1)};
+}
+function dtPredict(node,s){
+  if(node.leaf)return node.zone;
+  return s[node.f]===node.v?dtPredict(node.L,s):dtPredict(node.R,s);
+}
+function dtZoneToX(zone){
+  const hi=nx()-NW/2-BR;
+  return hi*[0.12,0.50,0.85][zone];
+}
+function dtOnPoint(aiWon){
+  if(dtPending){
+    dtSamples.push({...dtPending,win:aiWon});
+    if(dtSamples.length>120)dtSamples.shift();
+    if(dtSamples.length>=4)dtTree=dtBuild(dtSamples,0);
+    dtPending=null;
+  }
+  const recent=dtSamples.slice(-6);
+  if(recent.length>=3){
+    const wr=recent.filter(d=>d.win).length/recent.length;
+    dtAdaptSpd=0.85+wr*0.35;
+  }
+  // Save brain to persistent storage after every point
+  dtSave();
+}
+
+async function dtSave(){
+  try{
+    await window.storage.set('spike_brain',JSON.stringify({samples:dtSamples,adaptSpd:dtAdaptSpd}));
+  }catch(e){}
+}
+
+async function dtLoad(){
+  try{
+    const r=await window.storage.get('spike_brain');
+    if(r&&r.value){
+      const d=JSON.parse(r.value);
+      if(d.samples&&d.samples.length){
+        dtSamples=d.samples;
+        dtAdaptSpd=d.adaptSpd||1.0;
+        if(dtSamples.length>=4)dtTree=dtBuild(dtSamples,0);
+        showBrainStatus();
+      }
+    }
+  }catch(e){}
+}
+
+async function dtForget(){
+  try{await window.storage.delete('spike_brain');}catch(e){}
+  dtSamples=[];dtTree=null;dtPending=null;dtAdaptSpd=1.0;
+  showBrainStatus();
+}
+
+function showBrainStatus(){
+  const el=document.getElementById('brain-status');
+  if(!el)return;
+  const n=dtSamples.length;
+  if(n===0){el.textContent='AI memory: fresh';el.style.color='#ffffff55';}
+  else{
+    const wr=dtSamples.filter(d=>d.win).length;
+    el.textContent=`🧠 AI memory: ${n} rallies · ${wr} wins · ${dtSamples.length>=4?'tree active':'learning...'}`;
+    el.style.color=dtSamples.length>=4?'#ff5722':'#ffcc0299';
+  }
+}
+
+// ── Main AI state ─────────────────────────────────────────────────────────
+let aiState={blocking:false,blockCool:0};
+
 function aiTick(){
   const ai=PL[2];if(!ai)return;
   const cfg=DIFF[diff];
   const onSide=ball.x>nx();
-  const pred=predictBall();
-  const err=(Math.random()-.5)*cfg.err;
   const hn=sideHits[1];
+  const aiCx=ai.x+PW/2;
+  const pred=predictBall();
+  const effSpd=cfg.spd*dtAdaptSpd;
+
+  // ── Blocking ─────────────────────────────────────────────────────────
+  if(aiState.blockCool>0)aiState.blockCool--;
+  if(!aiState.blocking&&!ai.onGround&&aiState.blockCool===0){
+    const rushing=ball.vx<-6&&ball.x<nx()+120&&ball.y<fl()-50;
+    const chance=diff==='hard'?0.65:diff==='med'?0.35:0.05;
+    if(rushing&&Math.random()<chance){
+      aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
+      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=50;updateSkillBar();},380);
+    }
+  }
+
+  // ── Positioning ──────────────────────────────────────────────────────
+  const err=(Math.random()-.5)*cfg.err*(onSide?1:0.3);
   let tx;
-  if(!onSide) tx=nx()+W*.15;
-  else if(hn===0) tx=ball.x-PW/2+err;
-  else if(hn===1) tx=pred.x-PW/2+err*.5;
-  else tx=pred.x-PW/2+err*.3;
+  if(!onSide){
+    // Tree tells AI which zone worked — stand to cover where human aims
+    let coverZone=1;
+    if(dtTree&&diff!=='easy'){
+      const s={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot};
+      coverZone=dtPredict(dtTree,s);
+    }
+    // Position to intercept: near=stay close to net, deep=hang back
+    tx=[nx()+55,nx()+100,nx()+W*0.22][coverZone];
+    if(diff==='easy')tx=nx()+W*.18;
+  } else if(hn===0){
+    tx=ball.x-PW/2+err;
+  } else if(hn===1){
+    tx=diff==='easy'?ball.x-PW/2+err:nx()+65+err*0.3;
+  } else {
+    tx=pred.x-PW/2+err*0.2;
+    tx=Math.max(nx()+40,Math.min(slotMaxX(2)-PW-20,tx));
+  }
   tx=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,tx));
-  const diff2=tx-ai.x;
-  if(Math.abs(diff2)>2)ai.x+=Math.sign(diff2)*Math.min(cfg.spd,Math.abs(diff2));
+  const dx=tx-ai.x;
+  if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(effSpd,Math.abs(dx));
+
+  // ── Jump timing ──────────────────────────────────────────────────────
   if(ai.onGround&&onSide){
-    const d=Math.abs(ball.x-(ai.x+PW/2));
-    if(hn<2&&d<100&&ball.y<fl()-cfg.jt){ai.vy=JV*(hn===0?.65:.85);ai.onGround=false;}
-    else if(hn===2&&d<110&&ball.y<fl()-cfg.jt){ai.vy=JV;ai.onGround=false;}
+    const d=Math.abs(ball.x-aiCx);
+    if(hn===2&&ball.y<fl()-cfg.jt&&ball.y>nt()+30&&d<160){ai.vy=JV;ai.onGround=false;}
+    else if(hn===1&&d<80&&ball.y<fl()-cfg.jt*0.7){ai.vy=JV*0.75;ai.onGround=false;}
+    else if(hn===0&&diff==='hard'&&d<60&&ball.y<fl()-cfg.jt*0.5){ai.vy=JV*0.55;ai.onGround=false;}
   }
   gravTick(ai,2);
-  if(aiCool>0){aiCool--;return;}
-  if(!onSide||sideHits[1]>=3||!inRange(2))return;
-  if(Math.random()>cfg.sc)return;
-  const captHn=sideHits[1];
-  const skill=captHn===2&&!ai.onGround?'spike':captHn===1?'set':'bump';
-  if(skill==='spike'&&ai.onGround)return;
-  const delay=cfg.ms+Math.random()*30;
-  setTimeout(()=>{
-    if(phase==='playing'&&sideHits[1]===captHn&&ball.x>nx()&&inRange(2))
-      doHitLocal(2,cfg.pwr(),skill);
-  },delay);
-  aiCool=16+Math.floor(Math.random()*6);
-}
 
-// ── SCORING ───────────────────────────────────────────────────────────────
+  // ── Hit decision ──────────────────────────────────────────────────────
+  if(aiCool>0){aiCool--;return;}
+  if(!onSide||sideHits[1]>=3)return;
+  if(Math.random()>cfg.sc)return;
+  if(!inRangeForSkill(2,'bump'))return;
+
+  const captHn=sideHits[1];
+  let skill;
+  if(captHn===0)skill='bump';
+  else if(captHn===1)skill='set';
+  else{
+    if(!isAirborne(ai)){aiCool=6;return;}
+    skill=humanX()>nx()-90&&Math.random()<(diff==='hard'?0.35:diff==='med'?0.2:0.05)?'tip':'spike';
+  }
+
+  const captSkill=skill;
+  const delay=cfg.ms+Math.random()*20;
+  setTimeout(()=>{
+    if(phase!=='playing'||sideHits[1]!==captHn||ball.x<=nx())return;
+    if(!inRangeForSkill(2,captSkill))return;
+    if(captSkill==='spike'&&!isAirborne(PL[2]))return;
+
+    doHitLocal(2,cfg.pwr(),captSkill);
+
+    if(captSkill==='spike'&&diff!=='easy'){
+      // Pick zone from tree if trained, else aim away from human
+      let zone=humanX()<nx()*0.5?0:2;
+      if(dtTree&&dtSamples.length>=4){
+        const s={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot};
+        zone=dtPredict(dtTree,s);
+      }
+      dtPending={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot,zone};
+      const targetX=dtZoneToX(zone);
+      const nudge=diff==='hard'?4:2.5;
+      ball.vx+=Math.sign(targetX-ball.x)*Math.min(nudge,Math.abs(targetX-ball.x)*0.07);
+    }
+  },delay);
+  aiCool=12+Math.floor(Math.random()*8);
+}
 function awardLocal(losingSide){
   if(phase!=='playing')return;
   phase='point';
   const win=1-losingSide;
-  score[win]++;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
-  updateHUD();updateSkillBar();sndPoint();
+  score[win]++;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;spikeCool=[0,0,0,0];
+  if(gmode==='ai')dtOnPoint(win===1);
+  updateHUD();updateSkillBar();showBrainStatus();sndPoint();
   let msg='',over=false;
   const names=gmode==='ai'?['YOU','AI']:['TEAM A','TEAM B'];
   if(score[0]>=WPWIN&&score[0]-score[1]>=2){
@@ -836,8 +1067,19 @@ function updateHUD(){
   document.getElementById('tsb').textContent='Sets: '+sets[1];
 }
 function showOv(msg,col='#ffcc02'){const el=document.getElementById('ovm');el.textContent=msg;el.style.color=col;el.style.textShadow=`0 0 28px ${col},4px 4px 0 #ff5722`;el.classList.add('show');}
-function hideOv(){document.getElementById('ovm').classList.remove('show');}
-function doFlash(msg,col,ms=480){showOv(msg,col);if(flashTmr)clearTimeout(flashTmr);flashTmr=setTimeout(hideOv,ms);}
+function hideOv(){const el=document.getElementById('ovm');el.classList.remove('show','spike-pop');}
+function doFlash(msg,col,ms=480,big=false){
+  const el=document.getElementById('ovm');
+  el.classList.remove('show','spike-pop');
+  void el.offsetWidth; // force reflow so animation restarts
+  el.textContent=msg;el.style.color=col;
+  el.style.textShadow=big
+    ?`0 0 60px ${col},0 0 20px ${col},6px 6px 0 #000`
+    :`0 0 28px ${col},4px 4px 0 #ff5722`;
+  el.classList.add(big?'spike-pop':'show');
+  if(flashTmr)clearTimeout(flashTmr);
+  flashTmr=setTimeout(hideOv,ms);
+}
 function setHm(t){document.getElementById('hmsg').textContent=t;}
 function resetPositions(){
   PL.forEach((p,slot)=>{if(!p)return;p.x=slotStartX(slot);p.y=fl()-PH;p.vy=0;p.onGround=true;});
@@ -849,7 +1091,10 @@ function resetPositions(){
 // ── LAUNCH ────────────────────────────────────────────────────────────────
 function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
-  charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];
+  charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];spikeHeld=[false,false,false,false];spikeFired=[false,false,false,false];spikeCool=[0,0,0,0];
+  dtPending=null;dtLastHumanShot=0;
+  dtLoad(); // restore memory from previous sessions
+  aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
   PL=[null,null,null,null];
@@ -862,8 +1107,8 @@ function launchGame(mode,lm){
   resize();resetPositions();updateHUD();
   document.getElementById('ta').textContent=mode==='ai'?'YOU':mode==='1v1'?'P1':'TEAM A';
   document.getElementById('tb').textContent=mode==='ai'?'AI':mode==='1v1'?'P2':'TEAM B';
-  buildSkillBar();updateSkillBar();
-  if(mode!=='online'){showOv('Press F to serve');const srvName=mode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');setHm(srvName+' SERVES — E=Bump Q=Set Click=Spike (in air!) T=Tip R=Block');}
+  buildSkillBar();updateSkillBar();showBrainStatus();
+  if(mode!=='online'){showOv('Press F to serve');const srvName=mode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');setHm(srvName+' SERVES — Jump then Click to spike! E=Bump Q=Set T=Tip R=Block');}
   else setHm(mySlot===serving?'Press F to serve':'Waiting for server...');
   if(animId)cancelAnimationFrame(animId);loop(0);
 }
@@ -959,6 +1204,19 @@ function draw(){
     }
     localSlots().forEach(slot=>{const p=PL[slot];if(p)drawRing(slot,p);});
     localSlots().forEach(slot=>{const p=PL[slot];if(p&&charge[slot])drawArc(slot,p);});
+
+    // Draw spike range indicator when holding click and airborne
+    localSlots().forEach(slot=>{
+      const p=PL[slot];if(!p)return;
+      if(charge[slot]&&charge[slot].skill==='spike'&&isAirborne(p)){
+        const cx2=p.x+PW/2,cy2=p.y;
+        cx.save();
+        cx.strokeStyle='#ff5722';cx.shadowColor='#ff5722';cx.shadowBlur=12;
+        cx.lineWidth=1.5;cx.globalAlpha=0.5;cx.setLineDash([5,5]);
+        cx.beginPath();cx.arc(cx2,cy2,SPIKE_HR,0,Math.PI*2);cx.stroke();
+        cx.setLineDash([]);cx.restore();
+      }
+    });
   }
 }
 
@@ -966,11 +1224,30 @@ function drawRing(slot,p){
   const cx2=p.x+PW/2,cy2=p.y;
   const ddx=ball.x-cx2,ddy=ball.y-cy2;
   const dist=Math.sqrt(ddx*ddx+ddy*ddy);
-  if(dist>HR*1.6)return;
   const side=slotSide(slot),hn=sideHits[side];if(hn>=3)return;
-  const bside=side===0?ball.x<nx():ball.x>=nx();if(!bside)return;
+  const bside=side===0?ball.x<nx():ball.x>=nx();
+  
+  if(hn===2){
+    // Spike ring — uses larger radius, always show if ball roughly on side
+    if(dist>SPIKE_HR*1.4)return;
+    const t=Math.max(0,1-dist/(SPIKE_HR*1.2));
+    cx.save();cx.strokeStyle='#ff5722';cx.shadowColor='#ff5722';cx.shadowBlur=5;
+    cx.globalAlpha=t*.45;cx.lineWidth=1.5;cx.setLineDash([4,5]);
+    cx.beginPath();cx.arc(cx2,cy2,SPIKE_HR,0,Math.PI*2);cx.stroke();cx.setLineDash([]);
+    if(dist<SPIKE_HR){
+      const kl=slotKeyLabels(slot);
+      cx.globalAlpha=Math.min(1,t*2.2);cx.fillStyle='#ff5722';cx.shadowBlur=8;
+      cx.font='bold 11px "Barlow Condensed",sans-serif';cx.textAlign='center';
+      const airLabel=isAirborne(p)?'Click to Spike!':'Jump then Click';
+      cx.fillText(airLabel,cx2,cy2-PH-10);
+    }
+    cx.restore();
+    return;
+  }
+  
+  if(!bside||dist>HR*1.6)return;
   const t=Math.max(0,1-dist/(HR*1.2));
-  const cols=['#00d4ff','#ffcc02','#ff5722'][Math.min(hn,2)];
+  const cols=['#00d4ff','#ffcc02'][Math.min(hn,1)];
   cx.save();cx.strokeStyle=cols;cx.shadowColor=cols;cx.shadowBlur=5;
   cx.globalAlpha=t*.45;cx.lineWidth=1.5;cx.setLineDash([4,5]);
   cx.beginPath();cx.arc(cx2,cy2,HR,0,Math.PI*2);cx.stroke();cx.setLineDash([]);
@@ -978,7 +1255,7 @@ function drawRing(slot,p){
     const kl=slotKeyLabels(slot);
     cx.globalAlpha=Math.min(1,t*2.2);cx.fillStyle=cols;cx.shadowBlur=8;
     cx.font='bold 11px "Barlow Condensed",sans-serif';cx.textAlign='center';
-    cx.fillText('Hold '+kl[Math.min(hn,2)],cx2,cy2-PH-10);
+    cx.fillText('Hold '+kl[Math.min(hn,1)],cx2,cy2-PH-10);
   }
   cx.restore();
 }
