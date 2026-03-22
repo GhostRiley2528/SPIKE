@@ -365,9 +365,9 @@ function startCharge(slot,skill){
     return;
   }
 
-  // Spike: allow charging even on ground — fires on release if airborne
-  // Other skills: ball must be on your side to start charging
-  if(skill!=='spike'){
+  // Spike: allow charging even on ground
+  // Other skills: ball must be on your side — but skip for online guest (host validates)
+  if(skill!=='spike'&&!(gmode==='online'&&mySlot!==0)){
     const bside=side===0?ball.x<nx():ball.x>=nx();
     if(!bside){flashWrong(slot,skill);return;}
   }
@@ -554,21 +554,19 @@ function doHitLocal(slot,pwr,skill){
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
 
-  if(skill==='spike'){
-    if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
-    if(!inRangeForSkill(slot,'spike')){flashWrong(slot,'spike');return;}
-  } else {
-    // Non-spike: ball on your side (normal margin)
-    if(side===0?ball.x>=nx():ball.x<nx()){flashWrong(slot,skill);return;}
-    if(!inRange(slot)){flashWrong(slot,skill);return;}
+  // Online guest: skip all checks, host simulation is authoritative
+  if(!(gmode==='online'&&mySlot!==0)){
+    if(skill==='spike'){
+      if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
+      if(!inRangeForSkill(slot,'spike')){flashWrong(slot,'spike');return;}
+    } else {
+      if(side===0?ball.x>=nx():ball.x<nx()){flashWrong(slot,skill);return;}
+      if(!inRange(slot)){flashWrong(slot,skill);return;}
+    }
+    if(sideHits[side]>=3){flashWrong(slot,skill);return;}
+    if(lastHitSide>=0&&lastHitSide!==side){sideHits[1-side]=0;lastHitSlot=-1;}
+    if(skill!=='spike'&&slot===lastHitSlot&&lastHitSide===side&&sideHits[side]>0){flashWrong(slot,skill);return;}
   }
-
-  if(sideHits[side]>=3){flashWrong(slot,skill);return;}
-
-  // Reset side counter when ball crosses net
-  if(lastHitSide>=0&&lastHitSide!==side){sideHits[1-side]=0;lastHitSlot=-1;}
-  // Double-touch foul only for non-spike hits (in 1v1 the same player must hit all 3)
-  if(skill!=='spike'&&slot===lastHitSlot&&lastHitSide===side&&sideHits[side]>0){flashWrong(slot,skill);return;}
 
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
 
@@ -791,11 +789,10 @@ function fbListenState(){
     const gsRef=fbDb.ref('rooms/'+fbRoom+'/gs');
     const off1=gsRef.on('value',snap=>{
       const d=snap.val();if(!d||gmode!=='online')return;
-      // Only sync host's player position (not ball — guest runs own physics)
-      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
-      // Sync ball from host with lerp
-      ball.x+=(d.bx-ball.x)*0.3;ball.y+=(d.by-ball.y)*0.3;
-      ball.vx=d.bvx;ball.vy=d.bvy;
+      // Snap ball directly — host is authoritative, no lerp lag
+      ball.x=d.bx;ball.y=d.by;ball.vx=d.bvx;ball.vy=d.bvy;
+      // Lerp host player position smoothly
+      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.6;PL[0].y+=(d.p0y-PL[0].y)*0.6;PL[0].onGround=d.p0g;}
       // Sync game counters
       sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
       score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
@@ -942,8 +939,6 @@ function physTick(){
   spikeCool=spikeCool.map(v=>Math.max(0,v-1));
 
   if(gmode==='online'){
-    // Online: each client moves ONLY their own player locally for responsiveness
-    // Host also runs full ball physics and syncs everything
     const myP=PL[mySlot];
     if(myP){
       const lk='a',rk='d',jk=' ';
@@ -954,18 +949,18 @@ function physTick(){
         if(spikeHeld[mySlot]){
           spikeFired[mySlot]=true;
           doHitLocal(mySlot,0.9,'spike');
-          if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
+          if(mySlot!==0)fbSendAction({type:'spike'});
         }
       } else if(!myP.onGround&&spikeHeld[mySlot]&&!spikeFired[mySlot]){
         spikeFired[mySlot]=true;
         doHitLocal(mySlot,0.9,'spike');
-        if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
+        if(mySlot!==0)fbSendAction({type:'spike'});
       }
       gravTick(myP,mySlot);
     }
 
     if(mySlot===0){
-      // Host runs full ball simulation
+      // Host only: run ball physics and push to Firebase
       ballTrail.push({x:ball.x,y:ball.y,life:1});
       if(ballTrail.length>20)ballTrail.shift();
       ballTrail.forEach(t=>t.life-=0.065);
@@ -993,6 +988,11 @@ function physTick(){
       });
       checkLocalBlocks();
       fbPushState();
+    } else {
+      // Guest only: apply ball trail for visuals (ball pos comes from Firebase)
+      ballTrail.push({x:ball.x,y:ball.y,life:1});
+      if(ballTrail.length>20)ballTrail.shift();
+      ballTrail.forEach(t=>t.life-=0.065);
     }
     return;
   }
