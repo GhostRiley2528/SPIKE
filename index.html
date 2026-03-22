@@ -1145,6 +1145,14 @@ function showBrainStatus(){
 // ── Main AI state ─────────────────────────────────────────────────────────
 let aiState={blocking:false,blockCool:0};
 
+// Simulate ball landing position
+function predictBall(){
+  let px=ball.x,py=ball.y,pvx=ball.vx,pvy=ball.vy,st=0;
+  while(py<fl()-BR&&st<220){pvy+=G;px+=pvx;py+=pvy;st++;}
+  return{x:px,steps:st};
+}
+function humanX(){return PL[0]?PL[0].x+PW/2:W*0.25;}
+
 function aiTick(){
   const ai=PL[2];if(!ai)return;
   const cfg=DIFF[diff];
@@ -1152,50 +1160,62 @@ function aiTick(){
   const hn=sideHits[1];
   const aiCx=ai.x+PW/2;
   const pred=predictBall();
-  const effSpd=cfg.spd*dtAdaptSpd;
+  const hx=humanX();
 
   // ── Blocking ─────────────────────────────────────────────────────────
   if(aiState.blockCool>0)aiState.blockCool--;
   if(!aiState.blocking&&!ai.onGround&&aiState.blockCool===0){
-    const rushing=ball.vx<-6&&ball.x<nx()+120&&ball.y<fl()-50;
-    const chance=diff==='hard'?0.65:diff==='med'?0.35:0.05;
+    const rushing=ball.vx<-7&&ball.x<nx()+100&&ball.y<fl()-60;
+    const chance=diff==='hard'?0.7:diff==='med'?0.4:0.05;
     if(rushing&&Math.random()<chance){
       aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
-      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=50;updateSkillBar();},380);
+      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=45;updateSkillBar();},350);
     }
   }
 
   // ── Positioning ──────────────────────────────────────────────────────
-  const err=(Math.random()-.5)*cfg.err*(onSide?1:0.3);
+  const err=(Math.random()-.5)*cfg.err*(onSide?1:0.25);
   let tx;
   if(!onSide){
-    // Tree tells AI which zone worked — stand to cover where human aims
-    let coverZone=1;
-    if(dtTree&&diff!=='easy'){
-      const s={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot};
-      coverZone=dtPredict(dtTree,s);
+    // Ball on player's side — anticipate where spike will land
+    // Aim to stand away from where human usually aims (opposite side of court)
+    const humanIsLeft=hx<nx()*0.5; // human standing near net or deep?
+    if(diff==='hard'){
+      // Hard: actively position to cover the open court gap
+      tx=humanIsLeft?nx()+W*0.30:nx()+W*0.08;
+    } else if(diff==='med'){
+      tx=nx()+W*0.18;
+    } else {
+      tx=nx()+W*0.20;
     }
-    // Position to intercept: near=stay close to net, deep=hang back
-    tx=[nx()+55,nx()+100,nx()+W*0.22][coverZone];
-    if(diff==='easy')tx=nx()+W*.18;
   } else if(hn===0){
+    // First touch: track ball directly
     tx=ball.x-PW/2+err;
   } else if(hn===1){
-    tx=diff==='easy'?ball.x-PW/2+err:nx()+65+err*0.3;
+    // After bump: move to spike position near net
+    tx=diff==='easy'?ball.x-PW/2+err:nx()+55+err*0.3;
   } else {
-    tx=pred.x-PW/2+err*0.2;
-    tx=Math.max(nx()+40,Math.min(slotMaxX(2)-PW-20,tx));
+    // Third hit: get under predicted landing
+    tx=pred.x-PW/2+err*0.15;
+    tx=Math.max(nx()+35,Math.min(slotMaxX(2)-PW-10,tx));
   }
   tx=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,tx));
   const dx=tx-ai.x;
-  if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(effSpd,Math.abs(dx));
+  if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(cfg.spd,Math.abs(dx));
 
   // ── Jump timing ──────────────────────────────────────────────────────
   if(ai.onGround&&onSide){
-    const d=Math.abs(ball.x-aiCx);
-    if(hn===2&&ball.y<fl()-cfg.jt&&ball.y>nt()+30&&d<160){ai.vy=JV;ai.onGround=false;}
-    else if(hn===1&&d<80&&ball.y<fl()-cfg.jt*0.7){ai.vy=JV*0.75;ai.onGround=false;}
-    else if(hn===0&&diff==='hard'&&d<60&&ball.y<fl()-cfg.jt*0.5){ai.vy=JV*0.55;ai.onGround=false;}
+    const dist=Math.abs(ball.x-aiCx);
+    if(hn===2){
+      // Spike jump: ball needs to be at a good height
+      const goodHeight=ball.y<fl()-cfg.jt&&ball.y>nt()+40;
+      if(goodHeight&&dist<140){ai.vy=JV;ai.onGround=false;}
+    } else if(hn===1){
+      // Small hop to set better
+      if(dist<90&&ball.y<fl()-cfg.jt*0.75){ai.vy=JV*0.78;ai.onGround=false;}
+    } else if(hn===0&&diff==='hard'){
+      if(dist<55&&ball.y<fl()-cfg.jt*0.5){ai.vy=JV*0.55;ai.onGround=false;}
+    }
   }
   gravTick(ai,2);
 
@@ -1207,15 +1227,20 @@ function aiTick(){
 
   const captHn=sideHits[1];
   let skill;
-  if(captHn===0)skill='bump';
-  else if(captHn===1)skill='set';
-  else{
-    if(!isAirborne(ai)){aiCool=6;return;}
-    skill=humanX()>nx()-90&&Math.random()<(diff==='hard'?0.35:diff==='med'?0.2:0.05)?'tip':'spike';
+  if(captHn===0){
+    skill='bump';
+  } else if(captHn===1){
+    skill='set';
+  } else {
+    if(!isAirborne(ai)){aiCool=5;return;}
+    // Tip when human is close to net, spike otherwise
+    const humanNearNet=hx>nx()-80;
+    const tipChance=diff==='hard'?0.30:diff==='med'?0.15:0.03;
+    skill=humanNearNet&&Math.random()<tipChance?'tip':'spike';
   }
 
   const captSkill=skill;
-  const delay=cfg.ms+Math.random()*20;
+  const delay=cfg.ms+Math.random()*18;
   setTimeout(()=>{
     if(phase!=='playing'||sideHits[1]!==captHn||ball.x<=nx())return;
     if(!inRangeForSkill(2,captSkill))return;
@@ -1223,20 +1248,19 @@ function aiTick(){
 
     doHitLocal(2,cfg.pwr(),captSkill);
 
-    if(captSkill==='spike'&&diff!=='easy'){
-      // Pick zone from tree if trained, else aim away from human
-      let zone=humanX()<nx()*0.5?0:2;
-      if(dtTree&&dtSamples.length>=4){
-        const s={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot};
-        zone=dtPredict(dtTree,s);
-      }
-      dtPending={hxB:bucket(humanX(),0,nx(),3),bxB:bucket(ball.x,0,W,3),lastShot:dtLastHumanShot,zone};
-      const targetX=dtZoneToX(zone);
-      const nudge=diff==='hard'?4:2.5;
-      ball.vx+=Math.sign(targetX-ball.x)*Math.min(nudge,Math.abs(targetX-ball.x)*0.07);
+    // Smart aim: nudge spike away from where human is standing
+    if(captSkill==='spike'){
+      const hx2=humanX();
+      // Target the zone furthest from human
+      const courtW=nx()-NW/2-BR;
+      const targetX=hx2<courtW*0.5
+        ? courtW*0.85  // human is near net → aim deep
+        : courtW*0.12; // human is deep → aim near net (drop shot)
+      const nudge=diff==='hard'?3.5:diff==='med'?2:0;
+      if(nudge>0)ball.vx+=Math.sign(targetX-ball.x)*nudge;
     }
   },delay);
-  aiCool=12+Math.floor(Math.random()*8);
+  aiCool=10+Math.floor(Math.random()*8);
 }
 function awardLocal(losingSide){
   if(phase!=='playing')return;
