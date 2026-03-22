@@ -758,13 +758,13 @@ function fbPushState(){
   if(gmode!=='online'||mySlot!==0||!fbRoom)return;
   const now=Date.now();if(now-fbStateThrottle<33)return;fbStateThrottle=now;
   fbDb.ref('rooms/'+fbRoom+'/gs').set({
-    bx:Math.round(ball.x),by:Math.round(ball.y),
-    bvx:+ball.vx.toFixed(1),bvy:+ball.vy.toFixed(1),
-    p0x:Math.round(PL[0]?PL[0].x:0),p0y:Math.round(PL[0]?PL[0].y:0),p0g:PL[0]?PL[0].onGround:true,
-    p1x:Math.round(PL[1]?PL[1].x:0),p1y:Math.round(PL[1]?PL[1].y:0),p1g:PL[1]?PL[1].onGround:true,
+    bx:+ball.x.toFixed(1),by:+ball.y.toFixed(1),
+    bvx:+ball.vx.toFixed(2),bvy:+ball.vy.toFixed(2),
+    p0x:Math.round(PL[0]?PL[0].x:0),p0y:Math.round(PL[0]?PL[0].y:0),p0g:!!(PL[0]&&PL[0].onGround),
+    p2x:Math.round(PL[2]?PL[2].x:0),p2y:Math.round(PL[2]?PL[2].y:0),p2g:!!(PL[2]&&PL[2].onGround),
     sh0:sideHits[0],sh1:sideHits[1],rh:rallyHits,
     sc0:score[0],sc1:score[1],st0:sets[0],st1:sets[1],
-    ph:phase,sv:serving,t:now
+    ph:phase,sv:serving,fl:Math.round(fl()),t:now
   });
 }
 
@@ -789,11 +789,18 @@ function fbListenState(){
     const gsRef=fbDb.ref('rooms/'+fbRoom+'/gs');
     const off1=gsRef.on('value',snap=>{
       const d=snap.val();if(!d||gmode!=='online')return;
-      // Snap ball directly — host is authoritative, no lerp lag
-      ball.x=d.bx;ball.y=d.by;ball.vx=d.bvx;ball.vy=d.bvy;
-      // Lerp host player position smoothly
-      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.6;PL[0].y+=(d.p0y-PL[0].y)*0.6;PL[0].onGround=d.p0g;}
-      // Sync game counters
+      // Sync ball velocity for extrapolation
+      ball.vx=d.bvx;ball.vy=d.bvy;
+      // Snap ball position only if extrapolation has drifted too far
+      const dx=d.bx-ball.x,dy=d.by-ball.y;
+      if(Math.abs(dx)>8||Math.abs(dy)>8){ball.x=d.bx;ball.y=d.by;}
+      // Use host's floor value to fix the "ball above ground" issue
+      if(d.fl&&ball.y+BR>d.fl)ball.y=d.fl-BR;
+      // Sync host player
+      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
+      // Sync OUR position from host (authoritative) — smooth lerp
+      if(PL[2]){PL[2].x+=(d.p2x-PL[2].x)*0.3;PL[2].y+=(d.p2y-PL[2].y)*0.3;PL[2].onGround=d.p2g;}
+      // Sync counters
       sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
       score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
       serving=d.sv||0;
@@ -939,13 +946,13 @@ function physTick(){
   spikeCool=spikeCool.map(v=>Math.max(0,v-1));
 
   if(gmode==='online'){
+    // ── Both players: move own character with WASD/Space ──────────────
     const myP=PL[mySlot];
     if(myP){
-      const lk='a',rk='d',jk=' ';
-      if(keys[lk])myP.x-=PS;else if(keys[rk])myP.x+=PS;
-      if(keys[jk]&&myP.onGround){
-        myP.vy=JV;myP.onGround=false;
-        spikeFired[mySlot]=false;
+      if(keys['a']||keys['ArrowLeft'])myP.x-=PS;
+      else if(keys['d']||keys['ArrowRight'])myP.x+=PS;
+      if((keys[' ']||keys['ArrowUp'])&&myP.onGround){
+        myP.vy=JV;myP.onGround=false;spikeFired[mySlot]=false;
         if(spikeHeld[mySlot]){
           spikeFired[mySlot]=true;
           doHitLocal(mySlot,0.9,'spike');
@@ -959,8 +966,8 @@ function physTick(){
       gravTick(myP,mySlot);
     }
 
+    // ── Host only: run ball + push state ─────────────────────────────
     if(mySlot===0){
-      // Host only: run ball physics and push to Firebase
       ballTrail.push({x:ball.x,y:ball.y,life:1});
       if(ballTrail.length>20)ballTrail.shift();
       ballTrail.forEach(t=>t.life-=0.065);
@@ -969,16 +976,16 @@ function physTick(){
       if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
       if(ball.x+BR>W){ball.x=W-BR;ball.vx=-Math.abs(ball.vx)*.75;}
       if(ball.y-BR<0){ball.y=BR;ball.vy=Math.abs(ball.vy)*.65;}
-      const _nx=nx(),_nt=nt();
+      const _nx=nx(),_nt=nt(),_fl=fl();
       if(ball.x+BR>_nx-NW/2&&ball.x-BR<_nx+NW/2&&ball.y+BR>_nt){
         ball.vx=ball.vx>0?-Math.abs(ball.vx)*.55:Math.abs(ball.vx)*.55;
         ball.x=ball.vx<0?_nx-NW/2-BR:_nx+NW/2+BR;
-        ball.vy*=.65;spawnParts(ball.x,ball.y,'#ffffff55',6);
+        ball.vy*=.65;
       }
-      if(ball.y+BR>=fl()){
+      if(ball.y+BR>=_fl){
         localStats.longestRally=Math.max(localStats.longestRally,rallyHits);
-        spawnParts(ball.x,fl(),'#ffcc02',40);spawnParts(ball.x,fl()-20,'#ff5722',20);
-        shake(14,18);awardLocal(ball.x<nx()?0:1);return;
+        spawnParts(ball.x,_fl,'#ffcc02',40);spawnParts(ball.x,_fl-20,'#ff5722',20);
+        shake(14,18);awardLocal(ball.x<_nx?0:1);return;
       }
       PL.forEach(p=>{
         if(!p)return;
@@ -989,7 +996,11 @@ function physTick(){
       checkLocalBlocks();
       fbPushState();
     } else {
-      // Guest only: apply ball trail for visuals (ball pos comes from Firebase)
+      // ── Guest: extrapolate ball between Firebase updates ──────────
+      ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
+      ball.vx*=.996;
+      // Clamp to floor using the same FP constant (not fl() which varies)
+      if(ball.y+BR>H-FP)ball.y=H-FP-BR;
       ballTrail.push({x:ball.x,y:ball.y,life:1});
       if(ballTrail.length>20)ballTrail.shift();
       ballTrail.forEach(t=>t.life-=0.065);
