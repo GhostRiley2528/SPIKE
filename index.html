@@ -760,7 +760,7 @@ async function joinRoom(){
 // ── HOST: push full game state to Firebase ────────────────────────────────
 function fbPushState(){
   if(gmode!=='online'||mySlot!==0||!fbRoom)return;
-  const now=Date.now();if(now-fbStateThrottle<33)return;fbStateThrottle=now;
+  const now=Date.now();if(now-fbStateThrottle<16)return;fbStateThrottle=now;
   fbDb.ref('rooms/'+fbRoom+'/gs').set({
     bx:+ball.x.toFixed(1),by:+ball.y.toFixed(1),
     bvx:+ball.vx.toFixed(2),bvy:+ball.vy.toFixed(2),
@@ -793,16 +793,33 @@ function fbListenState(){
     const gsRef=fbDb.ref('rooms/'+fbRoom+'/gs');
     const off1=gsRef.on('value',snap=>{
       const d=snap.val();if(!d||gmode!=='online')return;
-      // Sync ball velocity for extrapolation
-      ball.vx=d.bvx;ball.vy=d.bvy;
-      // Snap ball position only if extrapolation has drifted too far
-      const dx=d.bx-ball.x,dy=d.by-ball.y;
-      if(Math.abs(dx)>8||Math.abs(dy)>8){ball.x=d.bx;ball.y=d.by;}
-      // Use host's floor value to fix the "ball above ground" issue
+
+      // ── Latency compensation ──────────────────────────────────────
+      // Data from Firebase is always stale by (now - d.t) ms
+      // Fast-forward ball physics by that many frames to show current position
+      const staleMs=d.t?Math.min(Date.now()-d.t,300):0; // cap at 300ms
+      const staleFrames=Math.round(staleMs/16.67);
+
+      // Start from the authoritative position Firebase sent
+      let px=d.bx,py=d.by,pvx=d.bvx,pvy=d.bvy;
+      const _fl=d.fl||H-FP;
+
+      // Simulate forward by staleFrames
+      for(let i=0;i<staleFrames;i++){
+        pvy+=G;px+=pvx;py+=pvy;
+        pvx*=.996;
+        if(px-BR<0){px=BR;pvx=Math.abs(pvx)*.75;}
+        if(px+BR>W){px=W-BR;pvx=-Math.abs(pvx)*.75;}
+        if(py+BR>=_fl){py=_fl-BR;pvy*=-0.4;}
+      }
+
+      // Apply compensated position
+      ball.x=px;ball.y=py;ball.vx=pvx;ball.vy=pvy;
       if(d.fl&&ball.y+BR>d.fl)ball.y=d.fl-BR;
-      // Sync host player (slot 0) position
+
+      // Sync host player position
       if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
-      // DO NOT sync PL[2] from Firebase — guest owns their own movement locally
+
       // Sync counters
       sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
       score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
