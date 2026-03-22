@@ -210,6 +210,9 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
     </div>
     <div style="text-align:right"><div class="hn" id="tb">TEAM B</div><div class="hs" id="tsb">Sets: 0</div></div>
   </div>
+  <div id="ctrlstrip" style="display:none;background:#000000cc;padding:2px 14px;font-size:9px;color:#ffffff88;letter-spacing:.06em;text-align:center;border-bottom:1px solid #ffffff11">
+    A/D move · Space jump · E=Bump · Q=Set · T=Tip · R=Block · Click(air)=Spike · F=Serve
+  </div>
   <div id="rallybar"><div id="rallyfill"></div></div>
   <div id="skbar">
     <div class="skgrp" id="skleft"></div>
@@ -688,6 +691,7 @@ function goMenu(){
   ['game','screen-lobby'].forEach(id=>document.getElementById(id).classList.add('hidden'));
   document.getElementById('screen-menu').classList.remove('hidden');
   document.getElementById('codewrap').style.display='none';
+  document.getElementById('ctrlstrip').style.display='none';
   document.getElementById('rmwrap').classList.remove('show');
   document.getElementById('stats-screen').classList.remove('show');
 }
@@ -796,10 +800,9 @@ function fbListenState(){
       if(Math.abs(dx)>8||Math.abs(dy)>8){ball.x=d.bx;ball.y=d.by;}
       // Use host's floor value to fix the "ball above ground" issue
       if(d.fl&&ball.y+BR>d.fl)ball.y=d.fl-BR;
-      // Sync host player
+      // Sync host player (slot 0) position
       if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
-      // Sync OUR position from host (authoritative) — smooth lerp
-      if(PL[2]){PL[2].x+=(d.p2x-PL[2].x)*0.3;PL[2].y+=(d.p2y-PL[2].y)*0.3;PL[2].onGround=d.p2g;}
+      // DO NOT sync PL[2] from Firebase — guest owns their own movement locally
       // Sync counters
       sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
       score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
@@ -855,7 +858,6 @@ function applyGuestAction(a){
   if(a.type==='keys'){
     if(a.left)p.x-=PS;else if(a.right)p.x+=PS;
     if(a.jump&&p.onGround){p.vy=JV;p.onGround=false;spikeFired[2]=false;}
-    gravTick(p,2);
   }
   if(a.type==='spike'&&!p.onGround)doHitLocal(2,0.9,'spike');
   if(a.type==='skill')doHitLocal(2,a.pwr,a.skill);
@@ -968,6 +970,8 @@ function physTick(){
 
     // ── Host only: run ball + push state ─────────────────────────────
     if(mySlot===0){
+      // Also apply gravity to guest's player on host side
+      if(PL[2])gravTick(PL[2],2);
       ballTrail.push({x:ball.x,y:ball.y,life:1});
       if(ballTrail.length>20)ballTrail.shift();
       ballTrail.forEach(t=>t.life-=0.065);
@@ -1370,11 +1374,14 @@ function launchGame(mode,lm){
   document.getElementById('ta').textContent=mode==='ai'?'YOU':mode==='1v1'?'P1':'TEAM A';
   document.getElementById('tb').textContent=mode==='ai'?'AI':mode==='1v1'?'P2':'TEAM B';
   buildSkillBar();updateSkillBar();showBrainStatus();
-  if(mode!=='online'){showOv('Press F to serve');const srvName=mode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');setHm(srvName+' SERVES — Jump then Click to spike! E=Bump Q=Set T=Tip R=Block');}
-  else{
-    const isServing=mySlot===serving;
-    const ctrlHint='A/D move · Space jump · E=Bump Q=Set Click=Spike';
-    setHm((isServing?'YOU SERVE — ':'Waiting for serve... — ')+ctrlHint);
+  if(mode!=='online'){
+    document.getElementById('ctrlstrip').style.display='none';
+    showOv('Press F to serve');
+    const srvName=mode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');
+    setHm(srvName+' SERVES — E=Bump Q=Set Click(air)=Spike T=Tip R=Block');
+  } else {
+    document.getElementById('ctrlstrip').style.display='block';
+    setHm(mySlot===serving?'Press F to serve':'Waiting for serve...');
   }
   if(animId)cancelAnimationFrame(animId);loop(0);
 }
