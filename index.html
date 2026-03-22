@@ -253,7 +253,7 @@ const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
 const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
 
 const HR=BR+PW*4.5;          // normal hit range (bump/set/tip)
-const SPIKE_HR=BR+PW*6;      // spike range — reasonable, not huge
+const SPIKE_HR=BR+PW*2.5;    // spike range — tight, ball must be close to you
 const BLOCK_R=BR+PW*5.0;
 
 const fl=()=>H-FP,nx=()=>W/2,nt=()=>fl()-H*NHF;
@@ -385,8 +385,10 @@ function releaseCharge(slot,skill){
   const c=charge[slot];if(!c||c.skill!==skill)return;
   const pwr=Math.min(1,(Date.now()-c.t)/MAXCHARGE);
   charge[slot]=null;clearPbar(slot);
-  if(gmode==='online'&&mySlot!==0){fbSendAction({type:'skill',pwr,skill});}
-  else doHitLocal(slot,pwr,skill);
+  // Always run locally for instant feedback
+  doHitLocal(slot,pwr,skill);
+  // Also send to host if guest so host simulation stays in sync
+  if(gmode==='online'&&mySlot!==0)fbSendAction({type:'skill',pwr,skill});
 }
 
 function tickPbars(){
@@ -516,6 +518,7 @@ document.addEventListener('keyup',e=>{
       if(k==='k')releaseCharge(2,'bump');if(k==='l')releaseCharge(2,'set');if(k===';')releaseCharge(2,'tip');if(k===',')releaseCharge(2,'block');
     }
   }
+});
 
 cv.addEventListener('mousedown',e=>{
   if(e.button!==0||phase!=='playing')return;e.preventDefault();
@@ -524,8 +527,8 @@ cv.addEventListener('mousedown',e=>{
     spikeHeld[slot]=true;spikeFired[slot]=false;
     if(!p.onGround){
       spikeFired[slot]=true;
-      if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
-      else doHitLocal(slot,0.9,'spike');
+      doHitLocal(slot,0.9,'spike'); // always local
+      if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'}); // also tell host
     }
   });
 });
@@ -552,8 +555,8 @@ function doHitLocal(slot,pwr,skill){
   const side=slotSide(slot);
 
   if(skill==='spike'){
-    // Caller guarantees player is airborne. Check cooldown to prevent double-spiking same ball.
     if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
+    if(!inRangeForSkill(slot,'spike')){flashWrong(slot,'spike');return;}
   } else {
     // Non-spike: ball on your side (normal margin)
     if(side===0?ball.x>=nx():ball.x<nx()){flashWrong(slot,skill);return;}
@@ -596,7 +599,7 @@ function doHitLocal(slot,pwr,skill){
     ball.vx=spikeDir*spd;   // strong horizontal
     ball.vy=-(3+pr*3);      // slight upward arc — always clears net, lands mid-court
 
-    spikeCool[slot]=22;
+    spikeCool[slot]=40;
     doFlash('SPIKE!','#ff5722',700,true);
     spawnParts(ball.x,ball.y,'#ff5722',50);spawnParts(ball.x,ball.y,'#ffcc02',20);
     flashTap(slot,'spike');sndSpike();shake(14,18);
@@ -788,16 +791,16 @@ function fbListenState(){
     const gsRef=fbDb.ref('rooms/'+fbRoom+'/gs');
     const off1=gsRef.on('value',snap=>{
       const d=snap.val();if(!d||gmode!=='online')return;
-      // Sync ball
-      ball.x+=(d.bx-ball.x)*0.5; ball.y+=(d.by-ball.y)*0.5;
-      ball.vx=d.bvx; ball.vy=d.bvy;
-      // Sync host player (slot 0)
-      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.4;PL[0].y+=(d.p0y-PL[0].y)*0.4;PL[0].onGround=d.p0g;}
+      // Only sync host's player position (not ball — guest runs own physics)
+      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
+      // Sync ball from host with lerp
+      ball.x+=(d.bx-ball.x)*0.3;ball.y+=(d.by-ball.y)*0.3;
+      ball.vx=d.bvx;ball.vy=d.bvy;
       // Sync game counters
-      sideHits=[d.sh0||0,d.sh1||0]; rallyHits=d.rh||0;
-      score=[d.sc0||0,d.sc1||0]; sets=[d.st0||0,d.st1||0];
+      sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
+      score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
       serving=d.sv||0;
-      updateHUD(); updateSkillBar();
+      updateHUD();updateSkillBar();
     });
     fbListeners.push(()=>gsRef.off('value',off1));
 
@@ -926,12 +929,13 @@ function showLocalStats(win){showStats(localStats,localStats.longestRally,win);}
 // ── LOCAL PHYSICS ─────────────────────────────────────────────────────────
 function serveLocal(){
   if(phase!=='waiting')return;
-  if(gmode==='online'&&mySlot!==serving){return;}
-  if(gmode==='online'&&mySlot!==0){fbSendAction({type:'serve'});return;}
+  if(gmode==='online'&&mySlot!==serving)return;
+  // Run locally always
   phase='playing';hideOv();setHm('');
-  lastHitSlot=-1;
-  ball.vx=0;ball.vy=-(11+Math.random()*2);
+  lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
   if(rallyHits===0)localStats.aces[slotSide(serving)]++;
+  // If guest, also tell host
+  if(gmode==='online'&&mySlot!==0)fbSendAction({type:'serve'});
 }
 
 function physTick(){
@@ -942,15 +946,20 @@ function physTick(){
     // Host also runs full ball physics and syncs everything
     const myP=PL[mySlot];
     if(myP){
-      // Both host and guest use A/D/Space (separate machines, no conflict)
       const lk='a',rk='d',jk=' ';
       if(keys[lk])myP.x-=PS;else if(keys[rk])myP.x+=PS;
       if(keys[jk]&&myP.onGround){
         myP.vy=JV;myP.onGround=false;
         spikeFired[mySlot]=false;
-        if(spikeHeld[mySlot]&&!spikeFired[mySlot]){spikeFired[mySlot]=true;doHitLocal(mySlot,0.9,'spike');}
+        if(spikeHeld[mySlot]){
+          spikeFired[mySlot]=true;
+          doHitLocal(mySlot,0.9,'spike');
+          if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
+        }
       } else if(!myP.onGround&&spikeHeld[mySlot]&&!spikeFired[mySlot]){
-        spikeFired[mySlot]=true;doHitLocal(mySlot,0.9,'spike');
+        spikeFired[mySlot]=true;
+        doHitLocal(mySlot,0.9,'spike');
+        if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
       }
       gravTick(myP,mySlot);
     }
