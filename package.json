@@ -4,8 +4,7 @@
   "description": "Multiplayer volleyball game",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "train:shot-policy": "node scripts/train-shot-policy.js"
+    "start": "node server.js"
   },
   "dependencies": { "ws": "^8.16.0" }
 }

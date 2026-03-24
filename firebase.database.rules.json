@@ -5,16 +5,6 @@
     "rooms": {
       ".read": true,
       ".write": true
-    },
-    "training": {
-      "pointClips": {
-        ".read": "auth != null && auth.uid === 'REPLACE_WITH_YOUR_FIREBASE_UID'",
-        "$day": {
-          "$clipId": {
-            ".write": "!data.exists()"
-          }
-        }
-      }
     }
   }
 }

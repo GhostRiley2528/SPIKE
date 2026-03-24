@@ -132,6 +132,47 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 .rmbtn{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.1em;padding:12px 40px;border:2px solid var(--ye);background:transparent;color:var(--ye);cursor:pointer;border-radius:4px;position:relative;overflow:hidden;text-shadow:0 0 8px var(--ye);box-shadow:0 0 18px #ffcc0233}
 .rmbtn::before{content:'';position:absolute;inset:0;background:var(--ye);transform:scaleX(0);transform-origin:left;transition:.15s;z-index:-1}
 .rmbtn:hover{color:#111;text-shadow:none}.rmbtn:hover::before{transform:scaleX(1)}
+#mobile-ui{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:14px 12px calc(14px + env(safe-area-inset-bottom));z-index:18;pointer-events:none}
+.mobile-cluster{display:flex;gap:10px;align-items:flex-end;pointer-events:auto}
+.mobile-pad{display:grid;grid-template-columns:64px 64px;gap:10px}
+.mobile-actions{display:grid;grid-template-columns:repeat(3,64px);gap:10px;justify-items:center}
+.mctl{width:64px;height:64px;border-radius:18px;border:1px solid #ffffff35;background:linear-gradient(180deg,#ffffff20,#00000055);color:#fff;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.08em;backdrop-filter:blur(8px);box-shadow:0 10px 22px #0008;touch-action:none;user-select:none}
+.mctl.wide{width:138px}
+.mctl.accent{border-color:#ffcc02;color:#ffcc02;text-shadow:0 0 10px #ffcc02}
+.mctl.attack{border-color:#ff5722;color:#ff5722;text-shadow:0 0 10px #ff5722}
+.mctl.utility{border-color:#00d4ff;color:#00d4ff;text-shadow:0 0 10px #00d4ff}
+.mctl.block{border-color:#00ff88;color:#00ff88;text-shadow:0 0 10px #00ff88}
+.mctl.tip{border-color:#ff2d78;color:#ff2d78;text-shadow:0 0 10px #ff2d78}
+.mctl:active,.mctl.active{transform:translateY(1px) scale(.97);background:linear-gradient(180deg,#ffffff30,#00000066)}
+body.mobile-mode{overflow:hidden}
+body.mobile-mode #mobile-ui{display:flex}
+body.mobile-mode #game{padding-bottom:0}
+body.mobile-mode #hud{height:60px;padding:0 10px}
+body.mobile-mode .hsc{font-size:32px;gap:10px}
+body.mobile-mode #skbar{padding:3px 10px;min-height:30px}
+body.mobile-mode .skgrp{gap:3px}
+body.mobile-mode .skb{font-size:9px;padding:2px 5px}
+body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
+@media (max-width: 900px){
+  .menu-btns{width:min(92vw,440px);flex-direction:column}
+  .mbtn{width:100%}
+  .ctrl-row-outer{gap:6px;padding:0 10px}
+  .cc{padding:7px 9px}
+  .cc p{font-size:9px}
+  .stats-box{padding:1.4rem 1rem}
+}
+@media (max-width: 700px){
+  #hud{height:58px;padding:0 8px}
+  .hn{font-size:14px}
+  .hs{font-size:9px}
+  .hsc{font-size:28px;gap:8px}
+  #hmsg{font-size:9px}
+  #skbar{justify-content:center;flex-wrap:wrap;padding:4px 8px;gap:4px}
+  .stats-grid{gap:6px 10px}
+  .stats-val{font-size:22px}
+  .stats-btns{flex-direction:column}
+  .sbtn,.rmbtn{width:100%}
+}
 </style>
 </head>
 <body>
@@ -142,7 +183,7 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
   <div class="logo"><h1>SPIKE!</h1><p>Beach Volleyball</p></div>
   <div class="menu-btns">
     <button class="mbtn online" onclick="showLobby()">🌐 Online (1v1 / 2v2)</button>
-    <button class="mbtn" onclick="startLocal('ai')">🤖 vs AI</button>
+    <button class="mbtn" onclick="startLocal('ai')">🤖 vs BOT</button>
     <button class="mbtn" onclick="startLocal('1v1')">👥 1v1 Local</button>
   </div>
   <div class="theme-row">
@@ -154,7 +195,7 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
     <button class="tbtn" id="th-4" style="background:linear-gradient(#0a2a4a,#1a6a8a)" onclick="setTheme(4)" title="Ocean"></button>
   </div>
   <div class="diff-row">
-    <span class="diff-label">AI DIFFICULTY</span>
+    <span class="diff-label">BOT DIFFICULTY</span>
     <button class="dbtn easy active" id="d-easy" onclick="setDiff('easy')">Easy</button>
     <button class="dbtn med" id="d-med" onclick="setDiff('med')">Medium</button>
     <button class="dbtn hard" id="d-hard" onclick="setDiff('hard')">Hard</button>
@@ -219,9 +260,7 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
     <div class="skgrp" id="skleft"></div>
     <div style="display:flex;align-items:center;gap:8px">
       <button id="bkbtn" onclick="goMenu()">← Menu</button>
-      <span id="brain-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
-      <span id="clip-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
-      <button onclick="dtForget()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff572299;padding:2px 7px;border-radius:3px;cursor:pointer" title="Wipe AI memory">🗑 forget</button>
+      <span id="bot-status" style="font-size:9px;letter-spacing:.05em;color:#00d4ff"></span>
     </div>
     <div class="skgrp" id="skright"></div>
   </div>
@@ -229,6 +268,25 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
     <canvas id="c"></canvas>
     <div id="ov"><div id="ovm"></div></div>
     <div id="sflash"></div>
+    <div id="mobile-ui">
+      <div class="mobile-cluster">
+        <div class="mobile-pad">
+          <button class="mctl utility" data-control="left">LEFT</button>
+          <button class="mctl utility" data-control="right">RIGHT</button>
+          <button class="mctl accent" data-control="jump">JUMP</button>
+          <button class="mctl accent" data-control="serve">SERVE</button>
+        </div>
+      </div>
+      <div class="mobile-cluster">
+        <div class="mobile-actions">
+          <button class="mctl utility" data-control="bump">BUMP</button>
+          <button class="mctl accent" data-control="set">SET</button>
+          <button class="mctl tip" data-control="tip">TIP</button>
+          <button class="mctl block" data-control="block">BLOCK</button>
+          <button class="mctl attack wide" data-control="spike">SPIKE</button>
+        </div>
+      </div>
+    </div>
     <div id="stats-screen">
       <div class="stats-box">
         <div class="stats-winner" id="stats-winner"></div>
@@ -251,7 +309,11 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 <script>
 const cv=document.getElementById('c'),cx=cv.getContext('2d');
 let W,H;
-function resize(){const el=document.getElementById('cw');W=el.clientWidth;H=el.clientHeight;cv.width=W;cv.height=H;}
+function resize(){
+  const el=document.getElementById('cw');
+  W=el.clientWidth;H=el.clientHeight;cv.width=W;cv.height=H;
+  updateMobileUI();
+}
 window.addEventListener('resize',resize);
 
 const storageApi={
@@ -271,9 +333,6 @@ const storageApi={
     window.localStorage.removeItem(key);
   }
 };
-
-const DATASET_VERSION=1;
-const TRAINING_DATASET_PATH='training/pointClips';
 
 const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
 const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
@@ -303,6 +362,7 @@ let diff='easy';
 function setDiff(d){
   diff=d;
   ['easy','med','hard'].forEach(x=>{const el=document.getElementById('d-'+x);el.className='dbtn '+x+(x===d?' active':'');});
+  showBotStatus();
 }
 
 let audioCtx=null;
@@ -519,6 +579,56 @@ function flashTap(slot,sk){
   el.classList.add('tapped');setTimeout(()=>el.classList.remove('tapped'),150);
 }
 
+function isMobileLayout(){
+  return window.matchMedia('(pointer: coarse)').matches||window.innerWidth<=900;
+}
+function mobilePrimarySlot(){
+  return localSlots().includes(0)?0:(localSlots()[0]??null);
+}
+function updateMobileUI(){
+  document.body.classList.toggle('mobile-mode',isMobileLayout()&&gmode!=='online');
+}
+function mobilePress(control){
+  const slot=mobilePrimarySlot();
+  if(slot==null)return;
+  if(control==='left'){keys['a']=true;keys['ArrowLeft']=true;return;}
+  if(control==='right'){keys['d']=true;keys['ArrowRight']=true;return;}
+  if(control==='jump'){keys[' ']=true;keys['ArrowUp']=true;return;}
+  if(control==='serve'){if(phase==='waiting')serveLocal();return;}
+  if(control==='spike'){
+    spikeHeld[slot]=true;spikeFired[slot]=false;
+    const p=PL[slot];
+    if(p&&!p.onGround&&phase==='playing'){
+      spikeFired[slot]=true;
+      doHitLocal(slot,0.9,'spike');
+    } else if(phase==='playing'){
+      spikeGrace[slot]=10;
+    }
+    return;
+  }
+  if(phase!=='playing')return;
+  startCharge(slot,control);
+}
+function mobileRelease(control){
+  const slot=mobilePrimarySlot();
+  if(slot==null)return;
+  if(control==='left'){keys['a']=false;keys['ArrowLeft']=false;return;}
+  if(control==='right'){keys['d']=false;keys['ArrowRight']=false;return;}
+  if(control==='jump'){keys[' ']=false;keys['ArrowUp']=false;return;}
+  if(control==='spike'){spikeHeld[slot]=false;spikeFired[slot]=false;return;}
+  if(['bump','set','tip','block'].includes(control))releaseCharge(slot,control);
+}
+
+document.querySelectorAll('#mobile-ui [data-control]').forEach(btn=>{
+  const control=btn.dataset.control;
+  const activate=e=>{e.preventDefault();btn.classList.add('active');mobilePress(control);};
+  const deactivate=e=>{e.preventDefault();btn.classList.remove('active');mobileRelease(control);};
+  btn.addEventListener('pointerdown',activate);
+  btn.addEventListener('pointerup',deactivate);
+  btn.addEventListener('pointercancel',deactivate);
+  btn.addEventListener('pointerleave',e=>{if(e.buttons)deactivate(e);});
+});
+
 // ── INPUT ─────────────────────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
   if(keys[e.key])return;keys[e.key]=true;
@@ -619,11 +729,6 @@ function doHitLocal(slot,pwr,skill){
   }
 
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
-  if(gmode==='ai'){
-    if(slot===0)dtLastHumanShot=skill;
-    recordPointEvent('hit',{slot,side,skill,power:clipRound(Math.max(0.3,Math.min(1,pwr)))});
-  }
-
   const spM=Math.min(1.4,1+rallyHits*0.035);
   const pr=Math.max(0.3,Math.min(1,pwr));
   const cxp=p.x+PW/2,cyp=p.y;
@@ -753,6 +858,7 @@ function goMenu(){
   document.getElementById('ctrlstrip').style.display='none';
   document.getElementById('rmwrap').classList.remove('show');
   document.getElementById('stats-screen').classList.remove('show');
+  updateMobileUI();
 }
 
 async function createRoom(){
@@ -1006,13 +1112,16 @@ function doRematch(){
   document.getElementById('stats-screen').classList.remove('show');
   if(gmode==='online'&&fbRoomRef){
     if(mySlot===0)fbRoomRef.update({state:'rematch',serving:serving===0?2:0});
-  } else launchGame(gmode,lmode);
+  } else {
+    phase='waiting';
+    launchGame(gmode,lmode);
+  }
 }
 function showRematch(msg){phase='gameover';document.getElementById('rmmsg').textContent=msg;document.getElementById('rmwrap').classList.add('show');}
 
 function showStats(stats,longestRally,win){
   phase='gameover';
-  const names=gmode==='ai'?['YOU','AI']:gmode==='1v1'?['P1','P2']:['TEAM A','TEAM B'];
+  const names=gmode==='ai'?['YOU','BOT']:gmode==='1v1'?['P1','P2']:['TEAM A','TEAM B'];
   const winner=win===0?names[0]:names[1];
   document.getElementById('stats-winner').textContent='🏆 '+winner+' WINS!';
   const rows=[
@@ -1045,15 +1154,6 @@ function serveLocal(){
   if(gmode==='online'&&mySlot!==serving)return;
   phase='playing';hideOv();setHm('');
   lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
-  if(gmode==='ai'){
-    dtPending={
-      hxB:bucket(humanX(),0,nx(),3),
-      bxB:bucket(ball.x,0,nx(),3),
-      lastShot:dtLastHumanShot||'serve',
-      zone:1
-    };
-    beginPointClip();
-  }
   if(rallyHits===0)localStats.aces[slotSide(serving)]++;
   if(gmode==='online'&&mySlot!==0)fbSendAction({type:'serve'});
   // FIX: Push state immediately after host serves so guest gets phase='playing' ASAP
@@ -1169,7 +1269,6 @@ function physTick(){
   ballTrail.push({x:ball.x,y:ball.y,life:1});
   if(ballTrail.length>20)ballTrail.shift();
   ballTrail.forEach(t=>t.life-=0.065);
-  recordPointFrame();
   ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
   ball.spin+=ball.vx*.05;ball.vx*=.996;
   if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
@@ -1208,33 +1307,16 @@ function predictBall(){
   return{x:px,steps:st};
 }
 function humanX(){return PL[0]?PL[0].x+PW/2:W*0.25;}
-
-let dtSamples=[];
-let dtTree=null;
-let dtPending=null;
-let dtLastHumanShot=0;
-let dtAdaptSpd=1.0;
-let shotPolicyModel=null;
-let shotPolicyStatus='rule';
-let pointClips=[];
-let pointClipActive=null;
-let pointClipFrameId=0;
-
-function clipRound(v){return Math.round(v*10)/10;}
-function dayStamp(iso){return (iso||new Date().toISOString()).slice(0,10);}
-function modelBucket(v,lo,hi,n){return Math.min(n-1,Math.max(0,Math.floor((v-lo)/(hi-lo)*n)));}
-async function getContributorId(){
-  const key='spike_contributor_id';
-  try{
-    const existing=await storageApi.get(key);
-    if(existing&&existing.value)return existing.value;
-    const id=`anon-${Math.random().toString(36).slice(2,10)}${Date.now().toString(36)}`;
-    await storageApi.set(key,id);
-    return id;
-  }catch(e){
-    return `anon-${Date.now().toString(36)}`;
-  }
+function botStatusText(){return `BOT ${diff.toUpperCase()}`;}
+function showBotStatus(){
+  const el=document.getElementById('bot-status');
+  if(!el)return;
+  el.textContent=botStatusText();
 }
+function botErrorScale(){
+  return diff==='hard'?0.35:diff==='med'?0.65:1;
+}
+/*
 function pointClipState(){
   return{
     frame:pointClipFrameId,
@@ -1581,7 +1663,58 @@ function showBrainStatus(){
     el.style.color=dtSamples.length>=4?'#ff5722':'#ffcc0299';
   }
 }
-
+*/
+function botTargetX(ai,pred,hx,hn,onSide){
+  const backLine=slotMaxX(2)-PW-18;
+  const midCourt=nx()+W*0.19;
+  const attackLane=hx<nx()*0.5?nx()+W*0.28:nx()+W*0.10;
+  const err=(Math.random()-.5)*DIFF[diff].err*botErrorScale();
+  if(!onSide)return Math.max(nx()+24,Math.min(backLine,attackLane+err));
+  if(hn===0)return Math.max(nx()+26,Math.min(backLine,pred.x-PW/2+err));
+  if(hn===1){
+    const setAnchor=Math.max(nx()+46,Math.min(backLine,midCourt+err*0.3));
+    return ball.y<nt()+65?Math.max(nx()+34,Math.min(backLine,ball.x-PW/2+err*0.25)):setAnchor;
+  }
+  const finishX=Math.max(nx()+34,Math.min(backLine,pred.x-PW/2+err*0.2));
+  return ball.y<fl()-120?finishX:Math.max(nx()+44,Math.min(backLine,midCourt+err*0.2));
+}
+function botShouldJump(ai,hn,onSide,dist){
+  if(!ai.onGround||!onSide)return false;
+  if(hn>=2)return ball.y<fl()-DIFF[diff].jt&&ball.y>nt()+36&&dist<132;
+  if(hn===1)return ball.y<fl()-DIFF[diff].jt*0.72&&ball.y>nt()+22&&dist<88;
+  return diff==='hard'&&ball.y<fl()-DIFF[diff].jt*0.45&&dist<52;
+}
+function chooseBotSkill(hn,ai,hx){
+  const player=PL[0];
+  const px=player?player.x+PW/2:nx()*0.25;
+  const playerNearNet=px>nx()-95;
+  const playerDeep=px<nx()*0.34;
+  const ballHigh=ball.y<fl()-135;
+  const ballNearNet=ball.x<nx()+78;
+  if(hn===0)return ballHigh&&diff!=='easy'?'set':'bump';
+  if(hn===1){
+    if(isAirborne(ai)&&ballNearNet)return playerNearNet?'tip':'spike';
+    return 'set';
+  }
+  if(!isAirborne(ai))return playerNearNet&&!playerDeep?'tip':'bump';
+  if(playerNearNet&&ballNearNet)return 'tip';
+  if(diff==='easy'&&Math.random()<0.4)return 'tip';
+  return 'spike';
+}
+function botAttackNudge(skill,hx){
+  const playerLeft=hx<nx()*0.5;
+  const targetX=playerLeft?nx()-NW/2-BR-28:30;
+  if(skill==='tip'){
+    const soft=diff==='hard'?1.3:diff==='med'?0.9:0.5;
+    ball.vx+=Math.sign(targetX-ball.x)*soft;
+    ball.vy-=diff==='hard'?0.5:0.2;
+    return;
+  }
+  if(skill!=='spike')return;
+  const hardNudge=diff==='hard'?3.6:diff==='med'?2.1:1;
+  ball.vx+=Math.sign(targetX-ball.x)*hardNudge;
+  if(diff!=='easy'&&Math.abs(hx-nx()*0.5)<70)ball.vx+=playerLeft?2.2:-2.2;
+}
 let aiState={blocking:false,blockCool:0};
 
 function aiTick(){
@@ -1603,39 +1736,14 @@ function aiTick(){
     }
   }
 
-  const err=(Math.random()-.5)*cfg.err*(onSide?1:0.25);
-  let tx;
-  if(!onSide){
-    const humanIsLeft=hx<nx()*0.5;
-    if(diff==='hard'){
-      tx=humanIsLeft?nx()+W*0.30:nx()+W*0.08;
-    } else if(diff==='med'){
-      tx=nx()+W*0.18;
-    } else {
-      tx=nx()+W*0.20;
-    }
-  } else if(hn===0){
-    tx=ball.x-PW/2+err;
-  } else if(hn===1){
-    tx=diff==='easy'?ball.x-PW/2+err:nx()+55+err*0.3;
-  } else {
-    tx=pred.x-PW/2+err*0.15;
-    tx=Math.max(nx()+35,Math.min(slotMaxX(2)-PW-10,tx));
-  }
+  const tx=botTargetX(ai,pred,hx,hn,onSide);
   tx=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,tx));
   const dx=tx-ai.x;
   if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(cfg.spd,Math.abs(dx));
 
   if(ai.onGround&&onSide){
     const dist=Math.abs(ball.x-aiCx);
-    if(hn===2){
-      const goodHeight=ball.y<fl()-cfg.jt&&ball.y>nt()+40;
-      if(goodHeight&&dist<140){ai.vy=JV;ai.onGround=false;}
-    } else if(hn===1){
-      if(dist<90&&ball.y<fl()-cfg.jt*0.75){ai.vy=JV*0.78;ai.onGround=false;}
-    } else if(hn===0&&diff==='hard'){
-      if(dist<55&&ball.y<fl()-cfg.jt*0.5){ai.vy=JV*0.55;ai.onGround=false;}
-    }
+    if(botShouldJump(ai,hn,onSide,dist)){ai.vy=hn>=2?JV:(hn===1?JV*0.78:JV*0.55);ai.onGround=false;}
   }
   gravTick(ai,2);
 
@@ -1645,7 +1753,7 @@ function aiTick(){
   if(!inRangeForSkill(2,'bump'))return;
 
   const captHn=sideHits[1];
-  const skill=chooseAiSkill(captHn,ai,hx);
+  const skill=chooseBotSkill(captHn,ai,hx);
   if(skill==='spike'&&!isAirborne(ai)){aiCool=5;return;}
 
   const captSkill=skill;
@@ -1657,15 +1765,7 @@ function aiTick(){
 
     doHitLocal(2,cfg.pwr(),captSkill);
 
-    if(captSkill==='spike'){
-      const hx2=humanX();
-      const courtW=nx()-NW/2-BR;
-      const targetX=hx2<courtW*0.5
-        ? courtW*0.85
-        : courtW*0.12;
-      const nudge=diff==='hard'?3.5:diff==='med'?2:0;
-      if(nudge>0)ball.vx+=Math.sign(targetX-ball.x)*nudge;
-    }
+    botAttackNudge(captSkill,humanX());
   },delay);
   aiCool=10+Math.floor(Math.random()*8);
 }
@@ -1673,13 +1773,10 @@ function awardLocal(losingSide){
   if(phase!=='playing')return;
   phase='point';
   const win=1-losingSide;
-  if(gmode==='ai')finalizePointClip(win,losingSide);
-  const shouldLearn=gmode==='ai'?shouldUsePointForAiMemory(win):true;
   score[win]++;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;spikeCool=[0,0,0,0];
-  if(gmode==='ai')dtOnPoint(win===1,shouldLearn);
-  updateHUD();updateSkillBar();showBrainStatus();sndPoint();
+  updateHUD();updateSkillBar();sndPoint();
   let msg='',over=false;
-  const names=gmode==='ai'?['YOU','AI']:['TEAM A','TEAM B'];
+  const names=gmode==='ai'?['YOU','BOT']:['TEAM A','TEAM B'];
   if(score[0]>=WPWIN&&score[0]-score[1]>=2){
     sets[0]++;score[0]=0;score[1]=0;serving=0;
     over=sets[0]>=WSWIN;msg=over?`🏆 ${names[0]} WINS!`:`SET — ${names[0]}!`;
@@ -1737,10 +1834,6 @@ function resetPositions(){
 function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
   charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];spikeHeld=[false,false,false,false];spikeFired=[false,false,false,false];spikeCool=[0,0,0,0];
-  dtPending=null;dtLastHumanShot=0;pointClipActive=null;pointClipFrameId=0;
-  dtLoad();
-  loadPointClips();
-  loadShotPolicy();
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
@@ -1753,8 +1846,8 @@ function launchGame(mode,lm){
   document.getElementById('stats-screen').classList.remove('show');
   resize();resetPositions();updateHUD();
   document.getElementById('ta').textContent=mode==='ai'?'YOU':mode==='1v1'?'P1':'TEAM A';
-  document.getElementById('tb').textContent=mode==='ai'?'AI':mode==='1v1'?'P2':'TEAM B';
-  buildSkillBar();updateSkillBar();showBrainStatus();
+  document.getElementById('tb').textContent=mode==='ai'?'BOT':mode==='1v1'?'P2':'TEAM B';
+  buildSkillBar();updateSkillBar();showBotStatus();updateMobileUI();
   if(mode!=='online'){
     document.getElementById('ctrlstrip').style.display='none';
     showOv('Press F to serve');
