@@ -8,9 +8,9 @@
     },
     "training": {
       "pointClips": {
+        ".read": "auth != null && auth.uid === 'REPLACE_WITH_YOUR_FIREBASE_UID'",
         "$day": {
           "$clipId": {
-            ".read": false,
             ".write": "!data.exists()"
           }
         }

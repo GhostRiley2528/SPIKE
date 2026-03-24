@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "trainedAt": null,
+  "samples": 0,
+  "keySpec": ["aiTouches","rallyBucket","ballXBucket","ballYBucket","ballVxBucket","ballVyBucket","playerXBucket","playerYBucket","aiAir"],
+  "policy": {}
+}

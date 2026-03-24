@@ -51,6 +51,21 @@ Each uploaded point contains:
 - outcome: scorer, winner, loser, rally hit count, last hitter
 - frames: sampled ball and player state across the rally
 - events: serve and hit actions with frame indexes
+- derivedTargets: first-pass supervised labels for later training, including `aiShotChoice`
+
+The current in-game AI memory also ignores unforced points where the scorer did not create the final winning action. That prevents the local learner from treating obvious drops/errors as a good strategy.
+
+## Shot Policy Training
+
+The repo now includes a first-pass offline trainer:
+
+```bash
+npm run train:shot-policy -- path/to/exported-dataset.json ai-shot-policy.json
+```
+
+It reads the exported dataset from `admin.html`, trains a simple lookup policy for AI shot choice, and writes [ai-shot-policy.json](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/ai-shot-policy.json).
+
+When the game loads, [index.html](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/index.html) automatically fetches `ai-shot-policy.json`. If the file contains trained samples, the AI uses that policy for shot selection in `vs AI`; otherwise it falls back to the built-in rule logic.
 
 ## GitHub Pages Behavior
 
@@ -61,8 +76,14 @@ If the game is deployed on GitHub Pages and Firebase is configured correctly, th
 The intended access model is:
 - public clients can write training clips
 - public clients cannot read training clips
-- admin reads and exports happen from Firebase Console or a private server/admin script
+- admin reads and exports happen from [admin.html](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/admin.html) or from Firebase Console/private scripts
 
 Apply the rules in [firebase.database.rules.json](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/firebase.database.rules.json).
+
+Before the admin page works, replace `REPLACE_WITH_YOUR_FIREBASE_UID` in:
+- [admin.html](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/admin.html)
+- [firebase.database.rules.json](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/firebase.database.rules.json)
+
+Then create or use a Firebase Auth email/password account for yourself and sign in through `admin.html`.
 
 Do not place admin credentials in the client or in GitHub Pages.

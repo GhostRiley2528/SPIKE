@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SPIKE! Admin</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Georgia,serif;background:linear-gradient(180deg,#0e1726,#09111d);color:#f3efe6;min-height:100vh}
+  .wrap{max-width:980px;margin:0 auto;padding:32px 20px 48px}
+  .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px;backdrop-filter:blur(8px)}
+  h1{margin:0 0 8px;font-size:42px;letter-spacing:.04em}
+  p{color:#d6d0c4;line-height:1.5}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0}
+  .stat{padding:14px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+  .stat .label{font-size:12px;text-transform:uppercase;color:#b7c0ce;letter-spacing:.08em}
+  .stat .value{font-size:28px;margin-top:6px;color:#7fe7ff}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  input,button{font:inherit;border-radius:10px;border:1px solid rgba(255,255,255,.18)}
+  input{padding:12px 14px;background:rgba(255,255,255,.08);color:#fff;min-width:220px}
+  button{padding:12px 16px;background:#7fe7ff;color:#082033;cursor:pointer;font-weight:700}
+  button.alt{background:rgba(255,255,255,.08);color:#fff}
+  button:disabled{opacity:.55;cursor:default}
+  #status{margin-top:12px;color:#ffd37f;min-height:20px}
+  #log{margin-top:18px;max-height:320px;overflow:auto;white-space:pre-wrap;font-family:Consolas,monospace;font-size:12px;background:#050a12;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.1)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>SPIKE! Admin</h1>
+    <p>This page reads the training dataset with Firebase Auth. Keep it separate from the public game page.</p>
+    <div class="row" id="auth-row">
+      <input id="email" type="email" placeholder="Admin email"/>
+      <input id="password" type="password" placeholder="Password"/>
+      <button id="login-btn">Sign In</button>
+      <button id="logout-btn" class="alt" disabled>Sign Out</button>
+      <button id="refresh-btn" class="alt" disabled>Refresh</button>
+      <button id="export-btn" disabled>Export JSON</button>
+    </div>
+    <div id="status"></div>
+    <div class="grid">
+      <div class="stat"><div class="label">Signed In UID</div><div class="value" id="uid">-</div></div>
+      <div class="stat"><div class="label">Days</div><div class="value" id="days">0</div></div>
+      <div class="stat"><div class="label">Total Clips</div><div class="value" id="clips">0</div></div>
+      <div class="stat"><div class="label">Latest Day</div><div class="value" id="latest">-</div></div>
+    </div>
+    <div id="log">Waiting for sign-in.</div>
+  </div>
+</div>
+<script>
+const FB_CONFIG={
+  apiKey:"AIzaSyCZwnP6wEWUMJBaokyxT1Gu412k70nDUoE",
+  authDomain:"spike-2ef3a.firebaseapp.com",
+  databaseURL:"https://spike-2ef3a-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"spike-2ef3a",
+  storageBucket:"spike-2ef3a.firebasestorage.app",
+  messagingSenderId:"602776384235",
+  appId:"1:602776384235:web:249b2905511524c92884ae"
+};
+const ADMIN_UID='REPLACE_WITH_YOUR_FIREBASE_UID';
+const TRAINING_DATASET_PATH='training/pointClips';
+
+firebase.initializeApp(FB_CONFIG);
+const auth=firebase.auth();
+const db=firebase.database();
+
+const emailEl=document.getElementById('email');
+const passwordEl=document.getElementById('password');
+const loginBtn=document.getElementById('login-btn');
+const logoutBtn=document.getElementById('logout-btn');
+const refreshBtn=document.getElementById('refresh-btn');
+const exportBtn=document.getElementById('export-btn');
+const statusEl=document.getElementById('status');
+const uidEl=document.getElementById('uid');
+const daysEl=document.getElementById('days');
+const clipsEl=document.getElementById('clips');
+const latestEl=document.getElementById('latest');
+const logEl=document.getElementById('log');
+
+let cachedDataset=null;
+
+function setStatus(msg,color='#ffd37f'){statusEl.textContent=msg;statusEl.style.color=color;}
+function isAdmin(user){return !!user&&user.uid===ADMIN_UID&&ADMIN_UID!=='REPLACE_WITH_YOUR_FIREBASE_UID';}
+function setButtons(user){
+  const ok=isAdmin(user);
+  logoutBtn.disabled=!user;
+  refreshBtn.disabled=!ok;
+  exportBtn.disabled=!ok;
+}
+function renderDataset(data){
+  cachedDataset=data||{};
+  const days=Object.keys(cachedDataset).sort();
+  const total=days.reduce((sum,day)=>sum+Object.keys(cachedDataset[day]||{}).length,0);
+  daysEl.textContent=String(days.length);
+  clipsEl.textContent=String(total);
+  latestEl.textContent=days.length?days[days.length-1]:'-';
+  logEl.textContent=JSON.stringify(cachedDataset,null,2);
+}
+async function loadDataset(){
+  const user=auth.currentUser;
+  if(!isAdmin(user)){
+    renderDataset({});
+    setStatus('Signed in user is not authorized for dataset reads. Set ADMIN_UID first.','#ff9b8e');
+    return;
+  }
+  setStatus('Loading dataset...');
+  const snap=await db.ref(TRAINING_DATASET_PATH).get();
+  renderDataset(snap.val()||{});
+  setStatus('Dataset loaded.','#8dffb2');
+}
+
+loginBtn.addEventListener('click',async()=>{
+  try{
+    setStatus('Signing in...');
+    await auth.signInWithEmailAndPassword(emailEl.value,passwordEl.value);
+  }catch(e){
+    setStatus(e.message,'#ff9b8e');
+  }
+});
+logoutBtn.addEventListener('click',async()=>{
+  await auth.signOut();
+});
+refreshBtn.addEventListener('click',()=>loadDataset().catch(e=>setStatus(e.message,'#ff9b8e')));
+exportBtn.addEventListener('click',()=>{
+  const payload=JSON.stringify({exportedAt:new Date().toISOString(),dataset:cachedDataset},null,2);
+  const blob=new Blob([payload],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`spike-dataset-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+
+auth.onAuthStateChanged(user=>{
+  uidEl.textContent=user?user.uid:'-';
+  setButtons(user);
+  if(!user){
+    renderDataset({});
+    setStatus('Signed out.');
+    return;
+  }
+  if(!isAdmin(user)){
+    renderDataset({});
+    setStatus('Signed in, but this UID is not the configured admin UID.','#ff9b8e');
+    return;
+  }
+  loadDataset().catch(e=>setStatus(e.message,'#ff9b8e'));
+});
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&display=swap" rel="stylesheet"/>
 <!-- Firebase SDKs -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -220,8 +221,6 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
       <button id="bkbtn" onclick="goMenu()">← Menu</button>
       <span id="brain-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
       <span id="clip-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
-      <button onclick="exportPointClips()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#00d4ff;padding:2px 7px;border-radius:3px;cursor:pointer" title="Download recorded AI training clips">export clips</button>
-      <button onclick="clearPointClips()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff6b6b;padding:2px 7px;border-radius:3px;cursor:pointer" title="Delete recorded AI training clips">clear clips</button>
       <button onclick="dtForget()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff572299;padding:2px 7px;border-radius:3px;cursor:pointer" title="Wipe AI memory">🗑 forget</button>
     </div>
     <div class="skgrp" id="skright"></div>
@@ -280,7 +279,7 @@ const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
 const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
 
 const HR=BR+PW*4.5;
-const SPIKE_HR=BR+PW*2.5;
+const SPIKE_HR=BR+PW*3.8;
 const BLOCK_R=BR+PW*5.0;
 
 const fl=()=>H-FP,nx=()=>W/2,nt=()=>fl()-H*NHF;
@@ -374,6 +373,26 @@ function inRange(slot){return inRangeForSkill(slot,'bump');}
 let spikeHeld=[false,false,false,false];
 let spikeFired=[false,false,false,false];
 let spikeCool=[0,0,0,0];
+let mouseCourt={x:0,y:0};
+let spikeGrace=[0,0,0,0];
+
+function updateMouseCourtPos(e){
+  const rect=cv.getBoundingClientRect();
+  const sx=W/Math.max(1,rect.width),sy=H/Math.max(1,rect.height);
+  mouseCourt.x=(e.clientX-rect.left)*sx;
+  mouseCourt.y=(e.clientY-rect.top)*sy;
+}
+function spikeTargetFor(slot){
+  const side=slotSide(slot);
+  const oppMin=side===0?nx()+NW/2+18:18;
+  const oppMax=side===0?W-18:nx()-NW/2-18;
+  const floorY=fl()-18;
+  const netY=nt()+24;
+  const targetX=Math.max(oppMin,Math.min(oppMax,mouseCourt.x||((oppMin+oppMax)/2)));
+  const rawY=mouseCourt.y||floorY;
+  const targetY=Math.max(netY,Math.min(floorY,rawY));
+  return{x:targetX,y:targetY};
+}
 
 // ── POWER METER ───────────────────────────────────────────────────────────
 function startCharge(slot,skill){
@@ -543,6 +562,7 @@ document.addEventListener('keyup',e=>{
 
 cv.addEventListener('mousedown',e=>{
   if(e.button!==0)return;e.preventDefault();
+  updateMouseCourtPos(e);
   // FIX: Allow spike attempt during 'waiting' phase so the click registers
   // correctly when the game transitions to 'playing' mid-jump
   if(phase!=='playing'&&phase!=='waiting')return;
@@ -553,9 +573,12 @@ cv.addEventListener('mousedown',e=>{
       spikeFired[slot]=true;
       doHitLocal(slot,0.9,'spike');
       if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
+    } else if(phase==='playing'){
+      spikeGrace[slot]=10;
     }
   });
 });
+cv.addEventListener('mousemove',updateMouseCourtPos);
 cv.addEventListener('mouseup',e=>{
   if(e.button!==0)return;
   localSlots().forEach(s=>{spikeHeld[s]=false;spikeFired[s]=false;});
@@ -623,9 +646,19 @@ function doHitLocal(slot,pwr,skill){
     doFlash('TIP','#ff2d78');spawnParts(ball.x,ball.y,'#ff2d78',8);flashTap(slot,'tip');sndTip();
   } else {
     const spikeDir=side===0?1:-1;
-    const spd=(11+pr*7)*spM;
-    ball.vx=spikeDir*spd;
-    ball.vy=-(3+pr*3);
+    const target=localSlots().includes(slot)?spikeTargetFor(slot):{
+      x:side===0?W*0.82:W*0.18,
+      y:fl()-24
+    };
+    let tx=target.x-ball.x,ty=target.y-ball.y;
+    if(Math.sign(tx)!==spikeDir)tx=spikeDir*Math.max(40,Math.abs(tx));
+    ty=Math.max(30,ty);
+    const len=Math.max(1,Math.sqrt(tx*tx+ty*ty));
+    const spd=(13+pr*8.5)*spM;
+    ball.vx=tx/len*spd;
+    ball.vy=ty/len*spd;
+    ball.vx=Math.abs(ball.vx)<6.8?spikeDir*6.8:ball.vx;
+    ball.vy=Math.max(ball.vy,4.8);
 
     spikeCool[slot]=40;
     doFlash('SPIKE!','#ff5722',700,true);
@@ -1028,6 +1061,7 @@ function serveLocal(){
 
 function physTick(){
   spikeCool=spikeCool.map(v=>Math.max(0,v-1));
+  spikeGrace=spikeGrace.map(v=>Math.max(0,v-1));
 
   if(gmode==='online'){
     const myP=PL[mySlot];
@@ -1119,7 +1153,9 @@ function physTick(){
     if(keys[jk]&&p.onGround){
       p.vy=JV;p.onGround=false;
       spikeFired[slot]=false;
-      if(spikeHeld[slot]&&!spikeFired[slot]){spikeFired[slot]=true;doHitLocal(slot,0.9,'spike');}
+      if((spikeHeld[slot]||spikeGrace[slot]>0)&&!spikeFired[slot]){
+        spikeFired[slot]=true;spikeGrace[slot]=0;doHitLocal(slot,0.9,'spike');
+      }
     } else if(!p.onGround&&spikeHeld[slot]&&!spikeFired[slot]){
       spikeFired[slot]=true;doHitLocal(slot,0.9,'spike');
     }
@@ -1177,12 +1213,15 @@ let dtTree=null;
 let dtPending=null;
 let dtLastHumanShot=0;
 let dtAdaptSpd=1.0;
+let shotPolicyModel=null;
+let shotPolicyStatus='rule';
 let pointClips=[];
 let pointClipActive=null;
 let pointClipFrameId=0;
 
 function clipRound(v){return Math.round(v*10)/10;}
 function dayStamp(iso){return (iso||new Date().toISOString()).slice(0,10);}
+function modelBucket(v,lo,hi,n){return Math.min(n-1,Math.max(0,Math.floor((v-lo)/(hi-lo)*n)));}
 async function getContributorId(){
   const key='spike_contributor_id';
   try{
@@ -1251,7 +1290,8 @@ function finalizePointClip(win,losingSide){
     scorer:win===0?'player':'ai',
     rallyHits,
     lastHitSlot,
-    finalBall:{x:clipRound(ball.x),y:clipRound(ball.y),vx:clipRound(ball.vx),vy:clipRound(ball.vy)}
+    finalBall:{x:clipRound(ball.x),y:clipRound(ball.y),vx:clipRound(ball.vx),vy:clipRound(ball.vy)},
+    includeInLocalMemory:shouldUsePointForAiMemory(win)
   };
   pointClips.push(pointClipActive);
   if(pointClips.length>250)pointClips.shift();
@@ -1266,12 +1306,58 @@ async function savePointClips(){
     await storageApi.set('spike_point_clips',JSON.stringify(pointClips));
   }catch(e){}
 }
+function clipFrameAtOrBefore(frames,frameId){
+  let best=null;
+  for(const frame of frames||[]){
+    if(frame&&frame.frame<=frameId)best=frame;
+    else break;
+  }
+  return best;
+}
+function buildDerivedTargets(clip){
+  const frames=clip.frames||[];
+  const events=clip.events||[];
+  const aiShotChoice=[];
+  for(const ev of events){
+    if(!ev||ev.type!=='hit'||ev.slot!==2)continue;
+    const frame=clipFrameAtOrBefore(frames,ev.frame);
+    if(!frame||!frame.players||!frame.players[0]||!frame.players[2])continue;
+    aiShotChoice.push({
+      label:ev.skill,
+      frame:ev.frame,
+      rallyHits:frame.rallyHits,
+      aiTouches:frame.sideHits&&frame.sideHits[1]!=null?frame.sideHits[1]:0,
+      ball:{
+        x:frame.ball.x,
+        y:frame.ball.y,
+        vx:frame.ball.vx,
+        vy:frame.ball.vy
+      },
+      ai:{
+        x:frame.players[2].x,
+        y:frame.players[2].y,
+        vy:frame.players[2].vy,
+        onGround:frame.players[2].onGround
+      },
+      player:{
+        x:frame.players[0].x,
+        y:frame.players[0].y,
+        vy:frame.players[0].vy,
+        onGround:frame.players[0].onGround
+      }
+    });
+  }
+  return{
+    aiShotChoice
+  };
+}
 async function uploadPointClip(clip){
   if(!clip||!fbInit()||!fbDb)return false;
   try{
     const contributorId=await getContributorId();
     const createdAt=clip.endedAt||clip.startedAt||new Date().toISOString();
     const day=dayStamp(createdAt);
+    const derivedTargets=buildDerivedTargets(clip);
     const ref=fbDb.ref(`${TRAINING_DATASET_PATH}/${day}`).push();
     await ref.set({
       version:DATASET_VERSION,
@@ -1290,8 +1376,10 @@ async function uploadPointClip(clip){
         winner:clip.winner,
         loser:clip.loser,
         rallyHits:clip.summary&&clip.summary.rallyHits||0,
-        lastHitSlot:clip.summary&&clip.summary.lastHitSlot!=null?clip.summary.lastHitSlot:null
+        lastHitSlot:clip.summary&&clip.summary.lastHitSlot!=null?clip.summary.lastHitSlot:null,
+        includeInLocalMemory:!!(clip.summary&&clip.summary.includeInLocalMemory)
       },
+      derivedTargets,
       clip:{
         server:clip.server,
         frames:clip.frames||[],
@@ -1342,8 +1430,58 @@ function showClipStatus(){
   const el=document.getElementById('clip-status');
   if(!el)return;
   const n=pointClips.length;
-  el.textContent=`clips: ${n}`;
+  el.textContent=`clips: ${n} · ${shotPolicyStatus}`;
   el.style.color=n?'#00d4ff':'#ffffff55';
+}
+
+async function loadShotPolicy(){
+  shotPolicyModel=null;
+  shotPolicyStatus='rule';
+  try{
+    const res=await fetch('ai-shot-policy.json',{cache:'no-store'});
+    if(!res.ok)return showClipStatus();
+    const model=await res.json();
+    if(model&&model.policy&&typeof model.policy==='object'){
+      shotPolicyModel=model;
+      shotPolicyStatus=`policy:${model.samples||0}`;
+    }
+  }catch(e){}
+  showClipStatus();
+}
+function shotPolicyKey(sample){
+  return [
+    Math.min(2,Math.max(0,sample.aiTouches||0)),
+    modelBucket(sample.rallyHits||0,0,12,4),
+    modelBucket(sample.ball?.x||0,0,W||800,6),
+    modelBucket(sample.ball?.y||0,0,H||500,6),
+    modelBucket(sample.ball?.vx||0,-20,20,5),
+    modelBucket(sample.ball?.vy||0,-20,20,5),
+    modelBucket(sample.player?.x||0,0,W||800,6),
+    modelBucket(sample.player?.y||0,0,H||500,5),
+    sample.ai?.onGround?0:1
+  ].join('|');
+}
+function chooseAiSkill(captHn,ai,hx){
+  if(captHn===0)return 'bump';
+  const sample={
+    aiTouches:captHn,
+    rallyHits,
+    ball:{x:ball.x,y:ball.y,vx:ball.vx,vy:ball.vy},
+    ai:{x:ai.x,y:ai.y,vy:ai.vy,onGround:ai.onGround},
+    player:{x:PL[0]?PL[0].x:0,y:PL[0]?PL[0].y:0,vy:PL[0]?PL[0].vy:0,onGround:PL[0]?PL[0].onGround:true}
+  };
+  if(shotPolicyModel&&shotPolicyModel.policy){
+    const hit=shotPolicyModel.policy[shotPolicyKey(sample)];
+    if(hit&&hit.action){
+      if(hit.action==='spike'&&!isAirborne(ai))return captHn===1?'set':'tip';
+      return hit.action;
+    }
+  }
+  if(captHn===1)return 'set';
+  if(!isAirborne(ai))return 'tip';
+  const humanNearNet=hx>nx()-80;
+  const tipChance=diff==='hard'?0.30:diff==='med'?0.15:0.03;
+  return humanNearNet&&Math.random()<tipChance?'tip':'spike';
 }
 
 function bucket(v,lo,hi,n){return Math.min(n-1,Math.max(0,Math.floor((v-lo)/(hi-lo)*n)));}
@@ -1381,11 +1519,19 @@ function dtZoneToX(zone){
   const hi=nx()-NW/2-BR;
   return hi*[0.12,0.50,0.85][zone];
 }
-function dtOnPoint(aiWon){
+function shouldUsePointForAiMemory(win){
+  if(lastHitSlot===-1)return false;
+  if(win===0)return lastHitSlot===0;
+  if(win===1)return lastHitSlot===2;
+  return false;
+}
+function dtOnPoint(aiWon,shouldLearn=true){
   if(dtPending){
-    dtSamples.push({...dtPending,win:aiWon});
-    if(dtSamples.length>120)dtSamples.shift();
-    if(dtSamples.length>=4)dtTree=dtBuild(dtSamples,0);
+    if(shouldLearn){
+      dtSamples.push({...dtPending,win:aiWon});
+      if(dtSamples.length>120)dtSamples.shift();
+      if(dtSamples.length>=4)dtTree=dtBuild(dtSamples,0);
+    }
     dtPending=null;
   }
   const recent=dtSamples.slice(-6);
@@ -1498,17 +1644,8 @@ function aiTick(){
   if(!inRangeForSkill(2,'bump'))return;
 
   const captHn=sideHits[1];
-  let skill;
-  if(captHn===0){
-    skill='bump';
-  } else if(captHn===1){
-    skill='set';
-  } else {
-    if(!isAirborne(ai)){aiCool=5;return;}
-    const humanNearNet=hx>nx()-80;
-    const tipChance=diff==='hard'?0.30:diff==='med'?0.15:0.03;
-    skill=humanNearNet&&Math.random()<tipChance?'tip':'spike';
-  }
+  const skill=chooseAiSkill(captHn,ai,hx);
+  if(skill==='spike'&&!isAirborne(ai)){aiCool=5;return;}
 
   const captSkill=skill;
   const delay=cfg.ms+Math.random()*18;
@@ -1536,8 +1673,9 @@ function awardLocal(losingSide){
   phase='point';
   const win=1-losingSide;
   if(gmode==='ai')finalizePointClip(win,losingSide);
+  const shouldLearn=gmode==='ai'?shouldUsePointForAiMemory(win):true;
   score[win]++;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;spikeCool=[0,0,0,0];
-  if(gmode==='ai')dtOnPoint(win===1);
+  if(gmode==='ai')dtOnPoint(win===1,shouldLearn);
   updateHUD();updateSkillBar();showBrainStatus();sndPoint();
   let msg='',over=false;
   const names=gmode==='ai'?['YOU','AI']:['TEAM A','TEAM B'];
@@ -1601,6 +1739,7 @@ function launchGame(mode,lm){
   dtPending=null;dtLastHumanShot=0;pointClipActive=null;pointClipFrameId=0;
   dtLoad();
   loadPointClips();
+  loadShotPolicy();
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
