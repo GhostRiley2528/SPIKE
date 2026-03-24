@@ -1120,13 +1120,11 @@ function showLobby(){
 function goMenu(){
   if(animId){cancelAnimationFrame(animId);animId=null;}
   fbOff();
-  charge=[null,null,null,null];blockingSlots.clear();
+  clearTransientMatchState();
   ['game','screen-lobby','screen-auth','screen-board'].forEach(id=>document.getElementById(id).classList.add('hidden'));
   document.getElementById('screen-menu').classList.remove('hidden');
   document.getElementById('codewrap').style.display='none';
   document.getElementById('ctrlstrip').style.display='none';
-  document.getElementById('rmwrap').classList.remove('show');
-  document.getElementById('stats-screen').classList.remove('show');
   updateMobileUI();
 }
 
@@ -1376,9 +1374,25 @@ function drawPslots(filled,needed){
     :`<span class="spin"></span>${filled}/${needed} joined...`;
 }
 
-function doRematch(){
+function clearTransientMatchState(){
+  if(roundResetTimer){clearTimeout(roundResetTimer);roundResetTimer=null;}
+  hideOv();
   document.getElementById('rmwrap').classList.remove('show');
   document.getElementById('stats-screen').classList.remove('show');
+  keys={};
+  charge=[null,null,null,null];
+  blockingSlots.clear();
+  spikeHeld=[false,false,false,false];
+  spikeFired=[false,false,false,false];
+  spikeGrace=[0,0,0,0];
+  spikeCool=[0,0,0,0];
+  aiCool=0;
+  parts=[];
+  ballTrail=[];
+}
+
+function doRematch(){
+  clearTransientMatchState();
   if(gmode==='online'&&fbRoomRef){
     if(mySlot===0)fbRoomRef.update({state:'rematch',serving:serving===0?2:0});
   } else {
@@ -2103,7 +2117,7 @@ function resetPositions(){
 // ── LAUNCH ────────────────────────────────────────────────────────────────
 function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
-  charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];spikeHeld=[false,false,false,false];spikeFired=[false,false,false,false];spikeCool=[0,0,0,0];
+  clearTransientMatchState();
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
