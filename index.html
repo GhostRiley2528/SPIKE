@@ -650,15 +650,16 @@ function doHitLocal(slot,pwr,skill){
       x:side===0?W*0.82:W*0.18,
       y:fl()-24
     };
-    let tx=target.x-ball.x,ty=target.y-ball.y;
+    let tx=target.x-ball.x;
     if(Math.sign(tx)!==spikeDir)tx=spikeDir*Math.max(40,Math.abs(tx));
-    ty=Math.max(30,ty);
-    const len=Math.max(1,Math.sqrt(tx*tx+ty*ty));
-    const spd=(13+pr*8.5)*spM;
-    ball.vx=tx/len*spd;
-    ball.vy=ty/len*spd;
-    ball.vx=Math.abs(ball.vx)<6.8?spikeDir*6.8:ball.vx;
-    ball.vy=Math.max(ball.vy,4.8);
+    const netGap=Math.max(30,Math.abs(nx()-ball.x));
+    const reach=Math.max(80,Math.abs(tx));
+    const crossFactor=Math.min(1,reach/(W*0.45));
+    const vxBase=(11.5+pr*7.5)*spM;
+    const clearance=(netGap<140?5.8:4.2)-crossFactor*1.4;
+    ball.vx=spikeDir*Math.max(7.2,Math.min(16,vxBase*(0.78+crossFactor*0.34)));
+    ball.vx+=Math.sign(tx)*Math.min(3.2,Math.abs(tx)/95);
+    ball.vy=-(clearance+pr*1.6);
 
     spikeCool[slot]=40;
     doFlash('SPIKE!','#ff5722',700,true);
