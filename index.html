@@ -963,6 +963,19 @@ function usernameEmail(name){
 function formatRating(v){
   return Math.round(v||1000);
 }
+function tierForRating(v){
+  const rating=formatRating(v);
+  if(rating>=1500)return{name:'Master',cls:'tier-master'};
+  if(rating>=1350)return{name:'Diamond',cls:'tier-diamond'};
+  if(rating>=1225)return{name:'Platinum',cls:'tier-platinum'};
+  if(rating>=1100)return{name:'Gold',cls:'tier-gold'};
+  if(rating>=950)return{name:'Silver',cls:'tier-silver'};
+  return{name:'Bronze',cls:'tier-bronze'};
+}
+function tierLabel(v){
+  const tier=tierForRating(v);
+  return `${tier.name} ${formatRating(v)}`;
+}
 function botOpponentRating(){
   return diff==='hard'?1180:diff==='med'?1000:860;
 }
@@ -974,14 +987,17 @@ function updateAccountUI(){
   const logoutBtn=document.getElementById('acct-logout-btn');
   if(!nameEl)return;
   if(currentProfile){
+    const tier=tierForRating(currentProfile.rating);
     nameEl.textContent=currentProfile.displayName||currentProfile.username||'Player';
-    rankEl.textContent=`Rating: ${formatRating(currentProfile.rating)}`;
+    rankEl.textContent=tierLabel(currentProfile.rating);
+    rankEl.className=`acct-rank ${tier.cls}`;
     subEl.textContent=`${currentProfile.wins||0} wins · ${currentProfile.losses||0} losses`;
     authBtn.textContent='Switch Account';
     logoutBtn.style.display='';
   }else{
     nameEl.textContent='Guest';
     rankEl.textContent='Rank: --';
+    rankEl.className='acct-rank';
     subEl.textContent='Create an account to climb the leaderboard.';
     authBtn.textContent='Sign Up / Login';
     logoutBtn.style.display='none';
@@ -1063,14 +1079,15 @@ async function refreshLeaderboard(){
     if(!rows.length){
       listEl.innerHTML='<div class="lb-empty">No ranked players yet.</div>';
     }else{
-      listEl.innerHTML=rows.slice(0,25).map((row,idx)=>`<div class="lb-row"><div class="lb-rank">#${idx+1}</div><div><div class="lb-name">${row.displayName||row.username}</div><div class="lb-meta">${row.wins||0}W · ${row.losses||0}L · ${row.games||0} games</div></div><div class="lb-score">${formatRating(row.rating)}</div></div>`).join('');
+      listEl.innerHTML=rows.slice(0,25).map((row,idx)=>{const tier=tierForRating(row.rating);return `<div class="lb-row"><div class="lb-rank">#${idx+1}</div><div><div class="lb-name">${row.displayName||row.username}</div><div class="lb-meta ${tier.cls}">${tier.name} · ${row.wins||0}W · ${row.losses||0}L · ${row.games||0} games</div></div><div class="lb-score ${tier.cls}">${formatRating(row.rating)}</div></div>`;}).join('');
     }
     if(currentUser){
       const myIdx=rows.findIndex(row=>row.uid===currentUser.uid);
       if(myIdx>=0){
         const me=rows[myIdx];
         meEl.style.display='';
-        meEl.innerHTML=`<strong>#${myIdx+1} ${me.displayName||me.username}</strong><div class="board-sub">${formatRating(me.rating)} rating · ${me.wins||0} wins · ${me.losses||0} losses</div>`;
+        const tier=tierForRating(me.rating);
+        meEl.innerHTML=`<strong>#${myIdx+1} ${me.displayName||me.username}</strong><div class="board-sub ${tier.cls}">${tier.name} · ${formatRating(me.rating)} rating · ${me.wins||0} wins · ${me.losses||0} losses</div>`;
       }else meEl.style.display='none';
     }else meEl.style.display='none';
   }catch(e){
