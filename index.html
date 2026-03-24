@@ -56,6 +56,29 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .field:focus{border-color:var(--ye);box-shadow:0 0 10px #ffcc0240}
 .lbtn{width:100%;padding:9px;font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.08em;border:none;background:var(--ye);color:#111;border-radius:5px;cursor:pointer;margin-bottom:.4rem;box-shadow:0 0 14px #ffcc0255}
 .lbtn:hover{opacity:.9}.lbtn.sec{background:#ffffff0f;color:#fff;border:1px solid #ffffff33;box-shadow:none}
+.acct-card{position:relative;z-index:3;background:#ffffff10;border:1px solid #ffffff24;border-radius:14px;padding:12px 14px;margin:.8rem auto 0;width:min(460px,92vw);text-align:left;backdrop-filter:blur(8px)}
+.acct-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.acct-title{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:.08em;color:var(--bl);text-shadow:0 0 12px #00d4ff55}
+.acct-rank{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.08em;color:var(--ye)}
+.acct-sub{font-size:11px;color:#fffb;letter-spacing:.08em;min-height:15px}
+.acct-actions{display:flex;gap:8px;margin-top:10px}
+.acct-btn{flex:1;padding:8px 10px;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.08em;border:1px solid #ffffff28;border-radius:8px;background:#ffffff10;color:#fff;cursor:pointer}
+.acct-btn.primary{border-color:var(--gr);color:var(--gr);box-shadow:0 0 12px #00ff8833}
+.auth-box,.board-box{background:#ffffff0a;border:1px solid #ffffff22;border-radius:14px;padding:1.6rem 1.5rem;width:min(480px,92vw);backdrop-filter:blur(8px)}
+.auth-box h2,.board-box h2{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.08em;color:var(--ye);margin-bottom:1rem;text-align:center;text-shadow:0 0 12px var(--ye)}
+.auth-grid{display:grid;gap:10px}
+.auth-note{font-size:11px;color:#fff8;line-height:1.5;min-height:16px}
+.board-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.board-sub{font-size:11px;color:#fff7;letter-spacing:.08em}
+.lb-list{display:grid;gap:8px;max-height:min(54vh,420px);overflow:auto;padding-right:4px}
+.lb-row{display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid #ffffff18;border-radius:10px;background:#ffffff09}
+.lb-rank{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--ye);text-align:center}
+.lb-name{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.05em}
+.lb-meta{font-size:10px;color:#fff8;letter-spacing:.08em}
+.lb-score{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--gr);text-align:right}
+.lb-empty{padding:14px;border:1px dashed #ffffff22;border-radius:10px;color:#fff8;text-align:center}
+.me-row{margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#00d4ff12;border:1px solid #00d4ff33}
+.me-row strong{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.06em;color:#00d4ff}
 .code-big{font-family:'Bebas Neue',sans-serif;font-size:50px;letter-spacing:.18em;color:var(--ye);text-shadow:0 0 18px var(--ye),3px 3px 0 var(--ac);cursor:pointer;margin:.3rem 0}
 .smsg{font-size:12px;color:#fff8;margin-top:.4rem;min-height:16px}.emsg{color:#ff6b6b}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid #fff3;border-top-color:var(--ye);border-radius:50%;animation:sp .7s linear infinite;margin-right:4px;vertical-align:middle}
@@ -156,6 +179,7 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
 @media (max-width: 900px){
   .menu-btns{width:min(92vw,440px);flex-direction:column}
   .mbtn{width:100%}
+  .acct-actions{flex-direction:column}
   .ctrl-row-outer{gap:6px;padding:0 10px}
   .cc{padding:7px 9px}
   .cc p{font-size:9px}
@@ -200,12 +224,58 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
     <button class="dbtn med" id="d-med" onclick="setDiff('med')">Medium</button>
     <button class="dbtn hard" id="d-hard" onclick="setDiff('hard')">Hard</button>
   </div>
+  <div class="acct-card">
+    <div class="acct-head">
+      <div class="acct-title" id="acct-name">Guest</div>
+      <div class="acct-rank" id="acct-rank">Rank: --</div>
+    </div>
+    <div class="acct-sub" id="acct-sub">Create an account to climb the leaderboard.</div>
+    <div class="acct-actions">
+      <button class="acct-btn primary" onclick="showAuthScreen()" id="acct-auth-btn">Sign Up / Login</button>
+      <button class="acct-btn" onclick="showLeaderboardScreen()">Leaderboard</button>
+      <button class="acct-btn" onclick="logoutAccount()" id="acct-logout-btn" style="display:none">Logout</button>
+    </div>
+  </div>
   <div class="ctrl-row-outer">
     <div class="cc"><h4>Move</h4><p><span class="k">A</span><span class="k">D</span> move<br><span class="k">Space</span> jump · <span class="k">F</span> serve</p></div>
     <div class="cc"><h4>Hits (P1)</h4><p><span class="k b">Hold E</span> Bump<br><span class="k s">Hold Q</span> Set<br><span class="k sp">Click (air)</span> Spike</p></div>
     <div class="cc"><h4>Extra (P1)</h4><p><span class="k bl">Hold R</span> Block<br><span class="k" style="border-color:#ff2d78;color:#ff2d78">Hold T</span> Tip<br>(tip = soft touch)</p></div>
     <div class="cc"><h4>P2 (Online)</h4><p>Same keys as P1!<br>Separate machines = no conflict<br><span class="k">A</span><span class="k">D</span> move · <span class="k">Space</span> jump<br><span class="k b">E</span> Bump · <span class="k s">Q</span> Set · <span class="k sp">Click</span> Spike</p></div>
     <div class="cc"><h4>Rules</h4><p>Jump then Click = Spike<br>Or Click while jumping<br>Max 3 hits/side</p></div>
+  </div>
+</div>
+
+<div id="screen-auth" class="screen hidden">
+  <div class="mbg"></div><div class="msand"></div><div class="mnet"></div>
+  <div class="auth-box">
+    <h2>Player Account</h2>
+    <div class="tabs">
+      <button class="tab-btn active" id="auth-tab-signup" onclick="switchAuthTab('signup')">Create</button>
+      <button class="tab-btn" id="auth-tab-login" onclick="switchAuthTab('login')">Login</button>
+    </div>
+    <div class="auth-grid">
+      <input id="auth-name" class="field" maxlength="16" placeholder="USERNAME"/>
+      <input id="auth-pass" class="field" maxlength="32" type="password" placeholder="PASSWORD"/>
+      <button class="lbtn" id="auth-submit" onclick="submitAuth()">Create Account</button>
+      <div class="auth-note" id="auth-msg"></div>
+      <button class="lbtn sec" onclick="showMenuScreen()">← Back</button>
+    </div>
+  </div>
+</div>
+
+<div id="screen-board" class="screen hidden">
+  <div class="mbg"></div><div class="msand"></div><div class="mnet"></div>
+  <div class="board-box">
+    <div class="board-top">
+      <h2 style="margin:0">Leaderboard</h2>
+      <button class="lbtn sec" style="width:auto;margin:0;padding:8px 14px" onclick="refreshLeaderboard()">Refresh</button>
+    </div>
+    <div class="board-sub">Win against the bot to raise your rating.</div>
+    <div id="me-row" class="me-row" style="display:none"></div>
+    <div id="lb-list" class="lb-list">
+      <div class="lb-empty">No ranked players yet.</div>
+    </div>
+    <button class="lbtn sec" onclick="showMenuScreen()" style="margin-top:12px">← Back</button>
   </div>
 </div>
 
@@ -366,6 +436,7 @@ function setDiff(d){
 }
 
 let audioCtx=null;
+let roundResetTimer=null;
 function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
 function playTone(freq,dur,type='sine',vol=0.18,decay=0.15){
   try{
@@ -807,14 +878,22 @@ const FB_CONFIG={
 };
 
 let fbApp=null,fbDb=null,fbRoom=null,fbRoomRef=null,fbListeners=[];
+let fbAuth=null,authWatcherBound=false,currentUser=null,currentProfile=null,authMode='signup';
 let lobbyMode='1v1',activeTab='create';
 let fbStateThrottle=0;
+const PROFILE_PATH='profiles';
+const USERNAME_PATH='usernames';
 
 function fbInit(){
   if(fbApp)return true;
   try{
     fbApp=firebase.initializeApp(FB_CONFIG);
     fbDb=firebase.database();
+    fbAuth=firebase.auth();
+    if(!authWatcherBound){
+      fbAuth.onAuthStateChanged(handleAuthState);
+      authWatcherBound=true;
+    }
     return true;
   }catch(e){
     console.error('Firebase init:',e);
@@ -832,6 +911,197 @@ function fbOff(){
 function randCode(){
   return Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
 }
+function showOnlyScreen(id){
+  ['screen-menu','screen-auth','screen-board','screen-lobby','game'].forEach(sid=>{
+    const el=document.getElementById(sid);
+    if(el)el.classList.toggle('hidden',sid!==id);
+  });
+}
+function showMenuScreen(){
+  if(fbRoom)fbOff();
+  showOnlyScreen('screen-menu');
+  updateMobileUI();
+}
+function showAuthScreen(){
+  showOnlyScreen('screen-auth');
+  switchAuthTab(authMode);
+  setAuthMessage('');
+}
+function showLeaderboardScreen(){
+  showOnlyScreen('screen-board');
+  refreshLeaderboard();
+}
+function switchAuthTab(mode){
+  authMode=mode;
+  document.getElementById('auth-tab-signup').classList.toggle('active',mode==='signup');
+  document.getElementById('auth-tab-login').classList.toggle('active',mode==='login');
+  document.getElementById('auth-submit').textContent=mode==='signup'?'Create Account':'Login';
+}
+function setAuthMessage(msg,isErr=false){
+  const el=document.getElementById('auth-msg');
+  if(!el)return;
+  el.textContent=msg||'';
+  el.style.color=isErr?'#ff6b6b':'#fff8';
+}
+function normalizeUsername(name){
+  return (name||'').toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,16);
+}
+function validateUsername(name){
+  const normalized=normalizeUsername(name);
+  if(normalized.length<3)return{ok:false,msg:'Use 3-16 letters, numbers, or _.'};
+  return{ok:true,normalized};
+}
+function usernameEmail(name){
+  return `${normalizeUsername(name)}@spikebot.gg`;
+}
+function formatRating(v){
+  return Math.round(v||1000);
+}
+function botOpponentRating(){
+  return diff==='hard'?1180:diff==='med'?1000:860;
+}
+function updateAccountUI(){
+  const nameEl=document.getElementById('acct-name');
+  const rankEl=document.getElementById('acct-rank');
+  const subEl=document.getElementById('acct-sub');
+  const authBtn=document.getElementById('acct-auth-btn');
+  const logoutBtn=document.getElementById('acct-logout-btn');
+  if(!nameEl)return;
+  if(currentProfile){
+    nameEl.textContent=currentProfile.displayName||currentProfile.username||'Player';
+    rankEl.textContent=`Rating: ${formatRating(currentProfile.rating)}`;
+    subEl.textContent=`${currentProfile.wins||0} wins · ${currentProfile.losses||0} losses`;
+    authBtn.textContent='Switch Account';
+    logoutBtn.style.display='';
+  }else{
+    nameEl.textContent='Guest';
+    rankEl.textContent='Rank: --';
+    subEl.textContent='Create an account to climb the leaderboard.';
+    authBtn.textContent='Sign Up / Login';
+    logoutBtn.style.display='none';
+  }
+}
+async function loadCurrentProfile(uid=currentUser&&currentUser.uid){
+  if(!uid||!fbInit())return currentProfile=null;
+  const snap=await fbDb.ref(`${PROFILE_PATH}/${uid}`).once('value');
+  currentProfile=snap.exists()?snap.val():null;
+  updateAccountUI();
+  return currentProfile;
+}
+async function handleAuthState(user){
+  currentUser=user||null;
+  if(currentUser)await loadCurrentProfile(currentUser.uid);
+  else{
+    currentProfile=null;
+    updateAccountUI();
+  }
+}
+async function submitAuth(){
+  if(!fbInit())return setAuthMessage('Firebase not available.',true);
+  const rawName=document.getElementById('auth-name').value.trim();
+  const rawPass=document.getElementById('auth-pass').value;
+  const valid=validateUsername(rawName);
+  if(!valid.ok)return setAuthMessage(valid.msg,true);
+  if(rawPass.length<6)return setAuthMessage('Password must be at least 6 characters.',true);
+  const normalized=valid.normalized;
+  const email=usernameEmail(normalized);
+  setAuthMessage(authMode==='signup'?'Creating account...':'Logging in...');
+  try{
+    if(authMode==='signup'){
+      const nameSnap=await fbDb.ref(`${USERNAME_PATH}/${normalized}`).once('value');
+      if(nameSnap.exists())throw new Error('That username is already taken.');
+      const cred=await fbAuth.createUserWithEmailAndPassword(email,rawPass);
+      await cred.user.updateProfile({displayName:rawName});
+      await fbDb.ref().update({
+        [`${USERNAME_PATH}/${normalized}`]:cred.user.uid,
+        [`${PROFILE_PATH}/${cred.user.uid}`]:{
+          username:normalized,
+          displayName:rawName,
+          rating:1000,
+          wins:0,
+          losses:0,
+          games:0,
+          createdAt:Date.now(),
+          lastPlayedAt:null
+        }
+      });
+      setAuthMessage('Account created.');
+    }else{
+      await fbAuth.signInWithEmailAndPassword(email,rawPass);
+      setAuthMessage('Logged in.');
+    }
+    document.getElementById('auth-pass').value='';
+    showMenuScreen();
+  }catch(e){
+    setAuthMessage(e.message||'Account error.',true);
+  }
+}
+async function logoutAccount(){
+  if(!fbInit()||!fbAuth)return;
+  await fbAuth.signOut();
+  setAuthMessage('');
+}
+async function refreshLeaderboard(){
+  if(!fbInit()){
+    document.getElementById('lb-list').innerHTML='<div class="lb-empty">Firebase is unavailable.</div>';
+    return;
+  }
+  const listEl=document.getElementById('lb-list');
+  const meEl=document.getElementById('me-row');
+  listEl.innerHTML='<div class="lb-empty">Loading leaderboard...</div>';
+  try{
+    const snap=await fbDb.ref(PROFILE_PATH).once('value');
+    const rows=[];
+    snap.forEach(child=>rows.push({uid:child.key,...child.val()}));
+    rows.sort((a,b)=>(b.rating||1000)-(a.rating||1000)||((b.wins||0)-(a.wins||0)));
+    if(!rows.length){
+      listEl.innerHTML='<div class="lb-empty">No ranked players yet.</div>';
+    }else{
+      listEl.innerHTML=rows.slice(0,25).map((row,idx)=>`<div class="lb-row"><div class="lb-rank">#${idx+1}</div><div><div class="lb-name">${row.displayName||row.username}</div><div class="lb-meta">${row.wins||0}W · ${row.losses||0}L · ${row.games||0} games</div></div><div class="lb-score">${formatRating(row.rating)}</div></div>`).join('');
+    }
+    if(currentUser){
+      const myIdx=rows.findIndex(row=>row.uid===currentUser.uid);
+      if(myIdx>=0){
+        const me=rows[myIdx];
+        meEl.style.display='';
+        meEl.innerHTML=`<strong>#${myIdx+1} ${me.displayName||me.username}</strong><div class="board-sub">${formatRating(me.rating)} rating · ${me.wins||0} wins · ${me.losses||0} losses</div>`;
+      }else meEl.style.display='none';
+    }else meEl.style.display='none';
+  }catch(e){
+    listEl.innerHTML=`<div class="lb-empty">${e.message||'Failed to load leaderboard.'}</div>`;
+  }
+}
+async function submitRankedBotResult(playerWon){
+  if(!currentUser||!fbInit())return;
+  const ref=fbDb.ref(`${PROFILE_PATH}/${currentUser.uid}`);
+  const opponent=botOpponentRating();
+  try{
+    const result=await ref.transaction(profile=>{
+      const base=profile&&typeof profile==='object'?profile:{
+        username:normalizeUsername(currentUser.displayName||'player'),
+        displayName:currentUser.displayName||'Player',
+        rating:1000,wins:0,losses:0,games:0,createdAt:Date.now(),lastPlayedAt:null
+      };
+      const rating=base.rating||1000;
+      const expected=1/(1+Math.pow(10,(opponent-rating)/400));
+      const score=playerWon?1:0;
+      const k=diff==='hard'?30:diff==='med'?24:20;
+      base.rating=Math.max(100,Math.round(rating+k*(score-expected)));
+      base.wins=(base.wins||0)+(playerWon?1:0);
+      base.losses=(base.losses||0)+(playerWon?0:1);
+      base.games=(base.games||0)+1;
+      base.lastPlayedAt=Date.now();
+      base.lastDifficulty=diff;
+      return base;
+    });
+    if(result&&result.snapshot){
+      currentProfile=result.snapshot.val();
+      updateAccountUI();
+    }
+  }catch(e){
+    console.error('Rank update failed:',e);
+  }
+}
 
 function setLobbyMode(m){
   lobbyMode=m;
@@ -845,14 +1115,13 @@ function switchTab(t){
   document.getElementById('tab-join').classList.toggle('active',t==='join');
 }
 function showLobby(){
-  document.getElementById('screen-menu').classList.add('hidden');
-  document.getElementById('screen-lobby').classList.remove('hidden');
+  showOnlyScreen('screen-lobby');
 }
 function goMenu(){
   if(animId){cancelAnimationFrame(animId);animId=null;}
   fbOff();
   charge=[null,null,null,null];blockingSlots.clear();
-  ['game','screen-lobby'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  ['game','screen-lobby','screen-auth','screen-board'].forEach(id=>document.getElementById(id).classList.add('hidden'));
   document.getElementById('screen-menu').classList.remove('hidden');
   document.getElementById('codewrap').style.display='none';
   document.getElementById('ctrlstrip').style.display='none';
@@ -1788,6 +2057,7 @@ function awardLocal(losingSide){
   }
   updateHUD();
   if(over){
+    if(gmode==='ai')submitRankedBotResult(win===0);
     if(gmode==='online'&&mySlot===0)fbPushEvent({type:"gameover",win,msg,sc0:score[0],sc1:score[1],st0:sets[0],st1:sets[1],sv:serving});
     showLocalStats(win);return;
   }
@@ -2064,6 +2334,9 @@ function loop(ts){
 }
 
 resize();
+updateAccountUI();
+switchAuthTab('signup');
+fbInit();
 </script>
 </body>
 </html>

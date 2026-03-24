@@ -5,6 +5,19 @@
     "rooms": {
       ".read": true,
       ".write": true
+    },
+    "profiles": {
+      ".read": true,
+      ".indexOn": ["rating"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$name": {
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.exists() && data.val() === auth.uid && newData.val() === auth.uid))"
+      }
     }
   }
 }
