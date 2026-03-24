@@ -1,75 +1,68 @@
-# 🏐 SPIKE! Volleyball — Multiplayer
+# SPIKE! Volleyball - Multiplayer
 
-A full beach volleyball game with online multiplayer via lobby codes.
+A browser volleyball game with local play, AI play, and online multiplayer.
 
----
+## Setup
 
-## Setup (takes ~1 minute)
+1. Install Node.js LTS from `https://nodejs.org`
+2. Install dependencies:
 
-### 1. Install Node.js
-Download from https://nodejs.org (choose the LTS version)
-
-### 2. Install dependencies
-Open a terminal in this folder and run:
-```
+```bash
 npm install
 ```
 
-### 3. Start the server
-```
+3. Start the server:
+
+```bash
 npm start
 ```
-You'll see:
-```
-  🏐 SPIKE! Volleyball Server
-  ─────────────────────────────
-  Local:   http://localhost:3000
-```
 
-### 4. Open the game
-- Open **http://localhost:3000** in your browser
+4. Open `http://localhost:3000`
 
----
+## Modes
 
-## Playing with a friend on the same Wi-Fi
-
-1. Find your local IP address:
-   - **Mac/Linux:** run `ifconfig` in terminal, look for `192.168.x.x`
-   - **Windows:** run `ipconfig`, look for `IPv4 Address`
-
-2. Tell your friend to open `http://YOUR_IP:3000` in their browser
-
-3. One person clicks **"Online Multiplayer" → "Create Room"** — share the 4-letter code
-
-4. Friend clicks **"Online Multiplayer" → "Join Room"** and enters the code
-
-5. Game starts automatically!
-
----
+- Online Multiplayer: play with a friend via a room code
+- vs AI: single-player match against the computer
+- 1v1 Local: two players on the same keyboard
 
 ## Controls
 
-| Action     | Player 1     | Player 2     |
-|------------|-------------|-------------|
-| Move       | A / D        | ← / →        |
-| Jump       | Space        | ↑            |
-| Serve      | F            | Enter        |
+- Move: `A / D`
+- Jump: `Space`
+- Serve: `F`
+- Bump: hold `E`
+- Set: hold `Q`
+- Spike: click while airborne
+- Tip: hold `T`
+- Block: hold `R`
 
-## Hit System (like real volleyball!)
+## AI Training Dataset
 
-| Hit   | Touch | What it does                    |
-|-------|-------|---------------------------------|
-| Bump  | 1st   | Soft upward pass                |
-| Set   | 2nd   | Precise toss toward net         |
-| Spike | 3rd   | Powerful smash over the net     |
+In `vs AI` mode, every scored point is recorded as structured gameplay data.
 
-- Max **3 hits per side**
-- 4th hit on same side = **fault** (other team gets point)
-- First to **7 points** wins a set — best of **3 sets** wins
+The data is stored in two places:
+- locally in the browser for quick export/debugging
+- centrally in Firebase Realtime Database at `training/pointClips/YYYY-MM-DD/...`
 
----
+This is training data, not MP4 video.
 
-## Modes
-- 🌐 **Online Multiplayer** — play with a friend via lobby code
-- 🤖 **vs AI** — single player against the computer
-- 👥 **1v1 Local** — two players on the same keyboard
+Each uploaded point contains:
+- metadata: timestamp, difficulty, theme, source app, page origin
+- outcome: scorer, winner, loser, rally hit count, last hitter
+- frames: sampled ball and player state across the rally
+- events: serve and hit actions with frame indexes
+
+## GitHub Pages Behavior
+
+If the game is deployed on GitHub Pages and Firebase is configured correctly, the shared dataset is updated automatically after every point scored in `vs AI` mode.
+
+## Admin-Only Dataset Access
+
+The intended access model is:
+- public clients can write training clips
+- public clients cannot read training clips
+- admin reads and exports happen from Firebase Console or a private server/admin script
+
+Apply the rules in [firebase.database.rules.json](/C:/Users/arnav/Downloads/volleyball-mp%20(1)/volleyball-mp/firebase.database.rules.json).
+
+Do not place admin credentials in the client or in GitHub Pages.

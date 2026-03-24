@@ -219,6 +219,9 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
     <div style="display:flex;align-items:center;gap:8px">
       <button id="bkbtn" onclick="goMenu()">← Menu</button>
       <span id="brain-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
+      <span id="clip-status" style="font-size:9px;letter-spacing:.05em;color:#ffffff55"></span>
+      <button onclick="exportPointClips()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#00d4ff;padding:2px 7px;border-radius:3px;cursor:pointer" title="Download recorded AI training clips">export clips</button>
+      <button onclick="clearPointClips()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff6b6b;padding:2px 7px;border-radius:3px;cursor:pointer" title="Delete recorded AI training clips">clear clips</button>
       <button onclick="dtForget()" style="font-size:9px;background:#ffffff08;border:1px solid #ffffff22;color:#ff572299;padding:2px 7px;border-radius:3px;cursor:pointer" title="Wipe AI memory">🗑 forget</button>
     </div>
     <div class="skgrp" id="skright"></div>
@@ -251,6 +254,27 @@ const cv=document.getElementById('c'),cx=cv.getContext('2d');
 let W,H;
 function resize(){const el=document.getElementById('cw');W=el.clientWidth;H=el.clientHeight;cv.width=W;cv.height=H;}
 window.addEventListener('resize',resize);
+
+const storageApi={
+  async get(key){
+    try{
+      if(window.storage&&typeof window.storage.get==='function')return await window.storage.get(key);
+      const value=window.localStorage.getItem(key);
+      return value===null?null:{value};
+    }catch(e){return null;}
+  },
+  async set(key,value){
+    if(window.storage&&typeof window.storage.set==='function')return window.storage.set(key,value);
+    window.localStorage.setItem(key,value);
+  },
+  async delete(key){
+    if(window.storage&&typeof window.storage.delete==='function')return window.storage.delete(key);
+    window.localStorage.removeItem(key);
+  }
+};
+
+const DATASET_VERSION=1;
+const TRAINING_DATASET_PATH='training/pointClips';
 
 const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
 const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
@@ -572,6 +596,10 @@ function doHitLocal(slot,pwr,skill){
   }
 
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
+  if(gmode==='ai'){
+    if(slot===0)dtLastHumanShot=skill;
+    recordPointEvent('hit',{slot,side,skill,power:clipRound(Math.max(0.3,Math.min(1,pwr)))});
+  }
 
   const spM=Math.min(1.4,1+rallyHits*0.035);
   const pr=Math.max(0.3,Math.min(1,pwr));
@@ -983,6 +1011,15 @@ function serveLocal(){
   if(gmode==='online'&&mySlot!==serving)return;
   phase='playing';hideOv();setHm('');
   lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
+  if(gmode==='ai'){
+    dtPending={
+      hxB:bucket(humanX(),0,nx(),3),
+      bxB:bucket(ball.x,0,nx(),3),
+      lastShot:dtLastHumanShot||'serve',
+      zone:1
+    };
+    beginPointClip();
+  }
   if(rallyHits===0)localStats.aces[slotSide(serving)]++;
   if(gmode==='online'&&mySlot!==0)fbSendAction({type:'serve'});
   // FIX: Push state immediately after host serves so guest gets phase='playing' ASAP
@@ -1091,6 +1128,7 @@ function physTick(){
   ballTrail.push({x:ball.x,y:ball.y,life:1});
   if(ballTrail.length>20)ballTrail.shift();
   ballTrail.forEach(t=>t.life-=0.065);
+  recordPointFrame();
   ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
   ball.spin+=ball.vx*.05;ball.vx*=.996;
   if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
@@ -1135,6 +1173,174 @@ let dtTree=null;
 let dtPending=null;
 let dtLastHumanShot=0;
 let dtAdaptSpd=1.0;
+let pointClips=[];
+let pointClipActive=null;
+let pointClipFrameId=0;
+
+function clipRound(v){return Math.round(v*10)/10;}
+function dayStamp(iso){return (iso||new Date().toISOString()).slice(0,10);}
+async function getContributorId(){
+  const key='spike_contributor_id';
+  try{
+    const existing=await storageApi.get(key);
+    if(existing&&existing.value)return existing.value;
+    const id=`anon-${Math.random().toString(36).slice(2,10)}${Date.now().toString(36)}`;
+    await storageApi.set(key,id);
+    return id;
+  }catch(e){
+    return `anon-${Date.now().toString(36)}`;
+  }
+}
+function pointClipState(){
+  return{
+    frame:pointClipFrameId,
+    phase,
+    serving,
+    score:[score[0],score[1]],
+    sets:[sets[0],sets[1]],
+    sideHits:[sideHits[0],sideHits[1]],
+    rallyHits,
+    ball:{x:clipRound(ball.x),y:clipRound(ball.y),vx:clipRound(ball.vx),vy:clipRound(ball.vy)},
+    players:PL.map((p,slot)=>p?{
+      slot,
+      side:slotSide(slot),
+      x:clipRound(p.x),
+      y:clipRound(p.y),
+      vy:clipRound(p.vy),
+      onGround:!!p.onGround
+    }:null)
+  };
+}
+function beginPointClip(){
+  if(gmode!=='ai')return;
+  pointClipFrameId=0;
+  pointClipActive={
+    id:`clip-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    startedAt:new Date().toISOString(),
+    mode:gmode,
+    difficulty:diff,
+    theme,
+    server:slotSide(serving),
+    frames:[],
+    events:[]
+  };
+  pointClipActive.events.push({type:'serve',by:slotSide(serving),frame:pointClipFrameId});
+  pointClipActive.frames.push(pointClipState());
+}
+function recordPointFrame(){
+  if(!pointClipActive||gmode!=='ai'||phase!=='playing')return;
+  pointClipFrameId++;
+  if(pointClipFrameId%2!==0)return;
+  pointClipActive.frames.push(pointClipState());
+}
+function recordPointEvent(type,data={}){
+  if(!pointClipActive||gmode!=='ai')return;
+  pointClipActive.events.push({type,frame:pointClipFrameId,...data});
+}
+function finalizePointClip(win,losingSide){
+  if(!pointClipActive||gmode!=='ai')return;
+  pointClipActive.endedAt=new Date().toISOString();
+  pointClipActive.winner=win;
+  pointClipActive.loser=losingSide;
+  pointClipActive.frames.push(pointClipState());
+  pointClipActive.summary={
+    scorer:win===0?'player':'ai',
+    rallyHits,
+    lastHitSlot,
+    finalBall:{x:clipRound(ball.x),y:clipRound(ball.y),vx:clipRound(ball.vx),vy:clipRound(ball.vy)}
+  };
+  pointClips.push(pointClipActive);
+  if(pointClips.length>250)pointClips.shift();
+  const completedClip=pointClipActive;
+  pointClipActive=null;
+  savePointClips();
+  uploadPointClip(completedClip);
+  showClipStatus();
+}
+async function savePointClips(){
+  try{
+    await storageApi.set('spike_point_clips',JSON.stringify(pointClips));
+  }catch(e){}
+}
+async function uploadPointClip(clip){
+  if(!clip||!fbInit()||!fbDb)return false;
+  try{
+    const contributorId=await getContributorId();
+    const createdAt=clip.endedAt||clip.startedAt||new Date().toISOString();
+    const day=dayStamp(createdAt);
+    const ref=fbDb.ref(`${TRAINING_DATASET_PATH}/${day}`).push();
+    await ref.set({
+      version:DATASET_VERSION,
+      createdAt,
+      contributorId,
+      source:{
+        app:'github-pages',
+        origin:location.origin||'local',
+        pathname:location.pathname||'/',
+        mode:clip.mode,
+        difficulty:clip.difficulty,
+        theme:clip.theme
+      },
+      outcome:{
+        scorer:clip.summary&&clip.summary.scorer||'unknown',
+        winner:clip.winner,
+        loser:clip.loser,
+        rallyHits:clip.summary&&clip.summary.rallyHits||0,
+        lastHitSlot:clip.summary&&clip.summary.lastHitSlot!=null?clip.summary.lastHitSlot:null
+      },
+      clip:{
+        server:clip.server,
+        frames:clip.frames||[],
+        events:clip.events||[],
+        finalBall:clip.summary&&clip.summary.finalBall||null
+      }
+    });
+    return true;
+  }catch(e){
+    console.error('Training clip upload failed:',e);
+    return false;
+  }
+}
+async function loadPointClips(){
+  try{
+    const r=await storageApi.get('spike_point_clips');
+    if(r&&r.value){
+      const parsed=JSON.parse(r.value);
+      pointClips=Array.isArray(parsed)?parsed:[];
+    } else pointClips=[];
+  }catch(e){pointClips=[];}
+  showClipStatus();
+}
+async function clearPointClips(){
+  pointClips=[];
+  pointClipActive=null;
+  try{await storageApi.delete('spike_point_clips');}catch(e){}
+  showClipStatus();
+}
+function exportPointClips(){
+  if(!pointClips.length)return;
+  const payload=JSON.stringify({
+    exportedAt:new Date().toISOString(),
+    version:1,
+    clips:pointClips
+  });
+  const blob=new Blob([payload],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`spike-point-clips-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function showClipStatus(){
+  const el=document.getElementById('clip-status');
+  if(!el)return;
+  const n=pointClips.length;
+  el.textContent=`clips: ${n}`;
+  el.style.color=n?'#00d4ff':'#ffffff55';
+}
 
 function bucket(v,lo,hi,n){return Math.min(n-1,Math.max(0,Math.floor((v-lo)/(hi-lo)*n)));}
 
@@ -1188,13 +1394,13 @@ function dtOnPoint(aiWon){
 
 async function dtSave(){
   try{
-    await window.storage.set('spike_brain',JSON.stringify({samples:dtSamples,adaptSpd:dtAdaptSpd}));
+    await storageApi.set('spike_brain',JSON.stringify({samples:dtSamples,adaptSpd:dtAdaptSpd}));
   }catch(e){}
 }
 
 async function dtLoad(){
   try{
-    const r=await window.storage.get('spike_brain');
+    const r=await storageApi.get('spike_brain');
     if(r&&r.value){
       const d=JSON.parse(r.value);
       if(d.samples&&d.samples.length){
@@ -1208,7 +1414,7 @@ async function dtLoad(){
 }
 
 async function dtForget(){
-  try{await window.storage.delete('spike_brain');}catch(e){}
+  try{await storageApi.delete('spike_brain');}catch(e){}
   dtSamples=[];dtTree=null;dtPending=null;dtAdaptSpd=1.0;
   showBrainStatus();
 }
@@ -1325,6 +1531,7 @@ function awardLocal(losingSide){
   if(phase!=='playing')return;
   phase='point';
   const win=1-losingSide;
+  if(gmode==='ai')finalizePointClip(win,losingSide);
   score[win]++;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;spikeCool=[0,0,0,0];
   if(gmode==='ai')dtOnPoint(win===1);
   updateHUD();updateSkillBar();showBrainStatus();sndPoint();
@@ -1387,8 +1594,9 @@ function resetPositions(){
 function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
   charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];spikeHeld=[false,false,false,false];spikeFired=[false,false,false,false];spikeCool=[0,0,0,0];
-  dtPending=null;dtLastHumanShot=0;
+  dtPending=null;dtLastHumanShot=0;pointClipActive=null;pointClipFrameId=0;
   dtLoad();
+  loadPointClips();
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
