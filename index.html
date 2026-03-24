@@ -255,8 +255,8 @@ window.addEventListener('resize',resize);
 const G=0.52,BR=13,FP=28,NW=10,NHF=0.28,PW=16,PH=56,PS=5.2,JV=-14;
 const WPWIN=7,WSWIN=2,MAXCHARGE=1600;
 
-const HR=BR+PW*4.5;          // normal hit range (bump/set/tip)
-const SPIKE_HR=BR+PW*2.5;    // spike range — tight, ball must be close to you
+const HR=BR+PW*4.5;
+const SPIKE_HR=BR+PW*2.5;
 const BLOCK_R=BR+PW*5.0;
 
 const fl=()=>H-FP,nx=()=>W/2,nt=()=>fl()-H*NHF;
@@ -338,10 +338,8 @@ function slotMinX(s){return s<2?0:nx()+NW/2+2;}
 function slotMaxX(s){return s<2?nx()-NW/2-2:W;}
 function slotStartX(s){return[W*.20,W*.08,W*.72,W*.86][s];}
 
-// ── HELPERS ───────────────────────────────────────────────────────────────
 function isAirborne(p){return p&&!p.onGround;}
 
-// Hit-range check
 function inRangeForSkill(slot,skill){
   const p=PL[slot];if(!p)return false;
   const r=skill==='spike'?SPIKE_HR:HR;
@@ -349,10 +347,9 @@ function inRangeForSkill(slot,skill){
 }
 function inRange(slot){return inRangeForSkill(slot,'bump');}
 
-// spikeHeld[slot]=true when mouse is held. spikeFired resets on landing.
 let spikeHeld=[false,false,false,false];
 let spikeFired=[false,false,false,false];
-let spikeCool=[0,0,0,0]; // frames before this slot can spike again
+let spikeCool=[0,0,0,0];
 
 // ── POWER METER ───────────────────────────────────────────────────────────
 function startCharge(slot,skill){
@@ -368,8 +365,6 @@ function startCharge(slot,skill){
     return;
   }
 
-  // Spike: allow charging even on ground
-  // Other skills: ball must be on your side — but skip for online guest (host validates)
   if(skill!=='spike'&&!(gmode==='online'&&mySlot!==0)){
     const bside=side===0?ball.x<nx():ball.x>=nx();
     if(!bside){flashWrong(slot,skill);return;}
@@ -388,9 +383,7 @@ function releaseCharge(slot,skill){
   const c=charge[slot];if(!c||c.skill!==skill)return;
   const pwr=Math.min(1,(Date.now()-c.t)/MAXCHARGE);
   charge[slot]=null;clearPbar(slot);
-  // Always run locally for instant feedback
   doHitLocal(slot,pwr,skill);
-  // Also send to host if guest so host simulation stays in sync
   if(gmode==='online'&&mySlot!==0)fbSendAction({type:'skill',pwr,skill});
 }
 
@@ -459,7 +452,6 @@ function updateSkillBar(){
       }
       if(hn>=3){el.classList.add('used');return;}
       if(sk==='spike'){
-        // Spike always shows as available when not used up — player just needs to jump
         const p=PL[slot];
         const airborne=p&&isAirborne(p);
         el.classList.add('av-spike');
@@ -488,9 +480,13 @@ function flashTap(slot,sk){
 document.addEventListener('keydown',e=>{
   if(keys[e.key])return;keys[e.key]=true;
   if(e.key===' ')e.preventDefault();
+
+  // FIX: Allow serve input for both 'waiting' and 'playing' to avoid phase mismatch.
+  // Guest can always press F to serve when it's their turn.
   if(phase==='waiting'){
-    if(gmode==='online'){if((e.key==='f'||e.key==='F')&&mySlot===serving)serveLocal();}
-    else if(e.key==='f'||e.key==='F'||e.key==='Enter')serveLocal();
+    if(gmode==='online'){
+      if((e.key==='f'||e.key==='F')&&mySlot===serving)serveLocal();
+    } else if(e.key==='f'||e.key==='F'||e.key==='Enter')serveLocal();
     return;
   }
   if(phase!=='playing')return;
@@ -499,13 +495,11 @@ document.addEventListener('keydown',e=>{
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
-  // Online guest (slot 2) uses same keys as host — separate machines, no conflict
   if(localSlots().includes(2)){
     if(gmode==='online'){
       if(k==='e')startCharge(2,'bump');if(k==='q')startCharge(2,'set');
       if(k==='t')startCharge(2,'tip');if(k==='r')startCharge(2,'block');
     } else {
-      // Local 1v1: slot 2 uses K/L/;/,
       if(k==='k')startCharge(2,'bump');if(k==='l')startCharge(2,'set');
       if(k===';')startCharge(2,'tip');if(k===',')startCharge(2,'block');
     }
@@ -524,14 +518,17 @@ document.addEventListener('keyup',e=>{
 });
 
 cv.addEventListener('mousedown',e=>{
-  if(e.button!==0||phase!=='playing')return;e.preventDefault();
+  if(e.button!==0)return;e.preventDefault();
+  // FIX: Allow spike attempt during 'waiting' phase so the click registers
+  // correctly when the game transitions to 'playing' mid-jump
+  if(phase!=='playing'&&phase!=='waiting')return;
   localSlots().forEach(slot=>{
     const p=PL[slot];if(!p)return;
     spikeHeld[slot]=true;spikeFired[slot]=false;
-    if(!p.onGround){
+    if(!p.onGround&&phase==='playing'){
       spikeFired[slot]=true;
-      doHitLocal(slot,0.9,'spike'); // always local
-      if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'}); // also tell host
+      doHitLocal(slot,0.9,'spike');
+      if(gmode==='online'&&mySlot!==0)fbSendAction({type:'spike'});
     }
   });
 });
@@ -543,12 +540,16 @@ cv.addEventListener('contextmenu',e=>e.preventDefault());
 
 let lastKS=0;
 function sendKeys(){
-  if(gmode!=='online'||mySlot===0||phase!=='playing')return;
+  if(gmode!=='online'||mySlot===0)return;
+  // FIX: Send movement keys during BOTH 'waiting' and 'playing' phases
+  // so the guest can move and position themselves before/after the serve
+  if(phase!=='playing'&&phase!=='waiting')return;
   const now=Date.now();if(now-lastKS<50)return;lastKS=now;
   const left=!!keys['a']||!!keys['ArrowLeft'];
   const right=!!keys['d']||!!keys['ArrowRight'];
   const jump=!!keys[' ']||!!keys['ArrowUp'];
-  if(left||right||jump)fbSendAction({type:'keys',left,right,jump});
+  // Always send if any key is pressed so guest movement is always responsive
+  fbSendAction({type:'keys',left,right,jump});
 }
 
 // ── LOCAL HIT ─────────────────────────────────────────────────────────────
@@ -557,7 +558,6 @@ function doHitLocal(slot,pwr,skill){
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
 
-  // Online guest: skip all checks, host simulation is authoritative
   if(!(gmode==='online'&&mySlot!==0)){
     if(skill==='spike'){
       if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
@@ -594,11 +594,10 @@ function doHitLocal(slot,pwr,skill){
     ball.vx=dir*(3+pr*2);ball.vy=-(6+pr*3);
     doFlash('TIP','#ff2d78');spawnParts(ball.x,ball.y,'#ff2d78',8);flashTap(slot,'tip');sndTip();
   } else {
-    // SPIKE — flat arc, always clears net, easy to receive
     const spikeDir=side===0?1:-1;
     const spd=(11+pr*7)*spM;
-    ball.vx=spikeDir*spd;   // strong horizontal
-    ball.vy=-(3+pr*3);      // slight upward arc — always clears net, lands mid-court
+    ball.vx=spikeDir*spd;
+    ball.vy=-(3+pr*3);
 
     spikeCool[slot]=40;
     doFlash('SPIKE!','#ff5722',700,true);
@@ -607,7 +606,6 @@ function doHitLocal(slot,pwr,skill){
     const sf=document.getElementById('sflash');sf.classList.add('on');setTimeout(()=>sf.classList.remove('on'),180);
     localStats.spikes[side]++;
   }
-  // Push ball away from player
   ball.x=cxp+ndx*(md+1);ball.y=cyp+ndy*(md+1);
   updateSkillBar();
 }
@@ -631,7 +629,6 @@ function checkLocalBlocks(){
 }
 
 // ── FIREBASE ONLINE ───────────────────────────────────────────────────────
-// ➤ REPLACE THIS CONFIG with your own from Firebase Console → Project Settings
 const FB_CONFIG={
   apiKey:"AIzaSyCZwnP6wEWUMJBaokyxT1Gu412k70nDUoE",
   authDomain:"spike-2ef3a.firebaseapp.com",
@@ -696,7 +693,6 @@ function goMenu(){
   document.getElementById('stats-screen').classList.remove('show');
 }
 
-// ── CREATE ROOM (host = slot 0) ───────────────────────────────────────────
 async function createRoom(){
   if(!fbInit())return;
   setS('c','Creating room...','w');
@@ -713,7 +709,6 @@ async function createRoom(){
     document.getElementById('codewrap').style.display='block';
     drawPslots(1,2);
     setS('c','Waiting for opponent...','w');
-    // Watch for guest joining
     const offLobby=fbRoomRef.on('value',snap=>{
       const d=snap.val();if(!d)return;
       drawPslots(d.filled||1,d.needed||2);
@@ -727,7 +722,6 @@ async function createRoom(){
   }catch(e){setS('c','Error: '+e.message,'e');}
 }
 
-// ── JOIN ROOM (guest = slot 1) ────────────────────────────────────────────
 async function joinRoom(){
   const code=document.getElementById('jinput').value.trim().toUpperCase();
   if(code.length<4){setS('j','Enter 4-letter code','e');return;}
@@ -742,14 +736,12 @@ async function joinRoom(){
 
     mySlot=2; lmode=d.mode||'1v1'; fbRoom=code;
     fbRoomRef=fbDb.ref('rooms/'+code);
-    // Mark room as playing
     await fbRoomRef.update({filled:2, state:'playing'});
     fbRoomRef.child('guestPresence').onDisconnect().remove();
     await fbRoomRef.child('guestPresence').set(true);
 
     drawPslots(2,2);
     setS('j','Joined! Starting...','w');
-    // Small delay then launch
     setTimeout(()=>{
       launchGame('online',lmode);
       fbListenState();
@@ -757,10 +749,13 @@ async function joinRoom(){
   }catch(e){setS('j','Error: '+e.message,'e');}
 }
 
-// ── HOST: push full game state to Firebase ────────────────────────────────
+// ── HOST: push full game state ────────────────────────────────────────────
 function fbPushState(){
   if(gmode!=='online'||mySlot!==0||!fbRoom)return;
   const now=Date.now();if(now-fbStateThrottle<16)return;fbStateThrottle=now;
+  // FIX: Also send host player (p0) position so guest can render them
+  // and guest player (p2) mirrored back so both sides are consistent.
+  // Include phase so guest knows when serving starts.
   fbDb.ref('rooms/'+fbRoom+'/gs').set({
     bx:+ball.x.toFixed(1),by:+ball.y.toFixed(1),
     bvx:+ball.vx.toFixed(2),bvy:+ball.vy.toFixed(2),
@@ -772,13 +767,11 @@ function fbPushState(){
   });
 }
 
-// ── HOST: push a point event ──────────────────────────────────────────────
 function fbPushEvent(evt){
   if(gmode!=='online'||mySlot!==0||!fbRoom)return;
   fbDb.ref('rooms/'+fbRoom+'/evt').set({...evt,t:Date.now()});
 }
 
-// ── GUEST: send input action to host ─────────────────────────────────────
 function fbSendAction(action){
   if(gmode!=='online'||mySlot===0||!fbRoom)return;
   fbDb.ref('rooms/'+fbRoom+'/act').push({...action,slot:mySlot,t:Date.now()});
@@ -789,46 +782,76 @@ function fbListenState(){
   if(!fbRoom)return;
 
   if(mySlot!==0){
-    // Guest receives game state from host
     const gsRef=fbDb.ref('rooms/'+fbRoom+'/gs');
     const off1=gsRef.on('value',snap=>{
       const d=snap.val();if(!d||gmode!=='online')return;
 
       // ── Latency compensation ──────────────────────────────────────
-      // Data from Firebase is always stale by (now - d.t) ms
-      // Fast-forward ball physics by that many frames to show current position
-      const staleMs=d.t?Math.min(Date.now()-d.t,300):0; // cap at 300ms
+      // Only fast-forward if game is actively playing (not waiting/serve phase)
+      // This prevents the ball from appearing to float too high during serve
+      const staleMs=d.t?(d.ph==='playing'?Math.min(Date.now()-d.t,180):0):0;
       const staleFrames=Math.round(staleMs/16.67);
 
-      // Start from the authoritative position Firebase sent
-      let px=d.bx,py=d.by,pvx=d.bvx,pvy=d.bvy;
       const _fl=d.fl||H-FP;
 
-      // Simulate forward by staleFrames
+      // Start from authoritative position
+      let px=d.bx,py=d.by,pvx=d.bvx,pvy=d.bvy;
+
+      // Simulate forward — include net collision to prevent floating-above-net artefact
+      const _nx=W/2,_nt=_fl-H*NHF;
       for(let i=0;i<staleFrames;i++){
         pvy+=G;px+=pvx;py+=pvy;
         pvx*=.996;
         if(px-BR<0){px=BR;pvx=Math.abs(pvx)*.75;}
         if(px+BR>W){px=W-BR;pvx=-Math.abs(pvx)*.75;}
-        if(py+BR>=_fl){py=_fl-BR;pvy*=-0.4;}
+        if(py-BR<0){py=BR;pvy=Math.abs(pvy)*.65;}
+        // Net collision (same logic as physTick)
+        if(px+BR>_nx-NW/2&&px-BR<_nx+NW/2&&py+BR>_nt){
+          pvx=pvx>0?-Math.abs(pvx)*.55:Math.abs(pvx)*.55;
+          px=pvx<0?_nx-NW/2-BR:_nx+NW/2+BR;
+          pvy*=.65;
+        }
+        // Stop fast-forward at floor — don't let compensated ball go below floor
+        if(py+BR>=_fl){py=_fl-BR;break;}
       }
 
       // Apply compensated position
       ball.x=px;ball.y=py;ball.vx=pvx;ball.vy=pvy;
-      if(d.fl&&ball.y+BR>d.fl)ball.y=d.fl-BR;
+      // Hard clamp — ball must never appear below floor on guest
+      if(ball.y+BR>_fl)ball.y=_fl-BR;
 
-      // Sync host player position
-      if(PL[0]){PL[0].x+=(d.p0x-PL[0].x)*0.5;PL[0].y+=(d.p0y-PL[0].y)*0.5;PL[0].onGround=d.p0g;}
+      // FIX: Sync host player (p0) with tight lerp so they're always visible
+      if(PL[0]){
+        PL[0].x+=(d.p0x-PL[0].x)*0.85;
+        PL[0].y+=(d.p0y-PL[0].y)*0.85;
+        PL[0].onGround=d.p0g;
+      }
 
-      // Sync counters
+      // FIX: Sync guest's own authoritative position from host to prevent drift
+      // Use a gentle correction so it doesn't feel jerky
+      if(PL[2]){
+        PL[2].x+=(d.p2x-PL[2].x)*0.3;
+        PL[2].onGround=d.p2g;
+      }
+
+      // FIX: Sync phase from host state so guest knows when it's 'waiting' vs 'playing'
+      // Only sync non-gameover phases here; gameover is handled via events
+      if(d.ph&&phase!=='gameover'){
+        phase=d.ph;
+      }
+
       sideHits=[d.sh0||0,d.sh1||0];rallyHits=d.rh||0;
       score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
       serving=d.sv||0;
       updateHUD();updateSkillBar();
+
+      // FIX: Keep serve message in sync with host phase
+      if(phase==='waiting'){
+        setHm(mySlot===serving?'Press F to serve':'Waiting for serve...');
+      }
     });
     fbListeners.push(()=>gsRef.off('value',off1));
 
-    // Guest receives events (point scored, serve, game over)
     const evtRef=fbDb.ref('rooms/'+fbRoom+'/evt');
     let lastEvtT=0;
     const off2=evtRef.on('value',snap=>{
@@ -857,7 +880,6 @@ function fbListenState(){
   }
 
   if(mySlot===0){
-    // Host receives guest inputs
     const actRef=fbDb.ref('rooms/'+fbRoom+'/act');
     const off3=actRef.on('child_added',snap=>{
       const a=snap.val();if(!a)return;
@@ -873,11 +895,17 @@ function applyGuestAction(a){
   if(!a||a.slot!==2)return;
   const p=PL[2];if(!p)return;
   if(a.type==='keys'){
+    // FIX: Allow movement during 'waiting' phase so guest can position before serve
     if(a.left)p.x-=PS;else if(a.right)p.x+=PS;
+    // FIX: Allow jumping during 'waiting' phase too
     if(a.jump&&p.onGround){p.vy=JV;p.onGround=false;spikeFired[2]=false;}
+    // FIX: Also check for mid-air spike while jump key held (in case timing is off)
+    else if(!p.onGround&&a.jump){/* already airborne, handled elsewhere */}
+    // Clamp position
+    p.x=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,p.x));
   }
-  if(a.type==='spike'&&!p.onGround)doHitLocal(2,0.9,'spike');
-  if(a.type==='skill')doHitLocal(2,a.pwr,a.skill);
+  if(a.type==='spike'&&phase==='playing'&&!p.onGround)doHitLocal(2,0.9,'spike');
+  if(a.type==='skill'&&phase==='playing')doHitLocal(2,a.pwr,a.skill);
   if(a.type==='serve'&&phase==='waiting'&&serving===2){
     phase='playing';hideOv();setHm('');
     lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
@@ -953,75 +981,90 @@ function showLocalStats(win){showStats(localStats,localStats.longestRally,win);}
 function serveLocal(){
   if(phase!=='waiting')return;
   if(gmode==='online'&&mySlot!==serving)return;
-  // Run locally always
   phase='playing';hideOv();setHm('');
   lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
   if(rallyHits===0)localStats.aces[slotSide(serving)]++;
-  // If guest, also tell host
   if(gmode==='online'&&mySlot!==0)fbSendAction({type:'serve'});
+  // FIX: Push state immediately after host serves so guest gets phase='playing' ASAP
+  if(gmode==='online'&&mySlot===0)fbPushEvent({type:'serve'});
 }
 
 function physTick(){
   spikeCool=spikeCool.map(v=>Math.max(0,v-1));
 
   if(gmode==='online'){
-    // ── Both players: move own character with WASD/Space ──────────────
     const myP=PL[mySlot];
     if(myP){
-      if(keys['a']||keys['ArrowLeft'])myP.x-=PS;
-      else if(keys['d']||keys['ArrowRight'])myP.x+=PS;
-      if((keys[' ']||keys['ArrowUp'])&&myP.onGround){
-        myP.vy=JV;myP.onGround=false;spikeFired[mySlot]=false;
-        if(spikeHeld[mySlot]){
+      // FIX: Allow movement during 'waiting' phase so guest/host can move before serve
+      if(phase==='playing'||phase==='waiting'){
+        if(keys['a']||keys['ArrowLeft'])myP.x-=PS;
+        else if(keys['d']||keys['ArrowRight'])myP.x+=PS;
+        if((keys[' ']||keys['ArrowUp'])&&myP.onGround){
+          myP.vy=JV;myP.onGround=false;spikeFired[mySlot]=false;
+          // FIX: Spike on jump — only trigger if game is playing
+          if(spikeHeld[mySlot]&&phase==='playing'){
+            spikeFired[mySlot]=true;
+            doHitLocal(mySlot,0.9,'spike');
+            if(mySlot!==0)fbSendAction({type:'spike'});
+          }
+        } else if(!myP.onGround&&spikeHeld[mySlot]&&!spikeFired[mySlot]&&phase==='playing'){
           spikeFired[mySlot]=true;
           doHitLocal(mySlot,0.9,'spike');
           if(mySlot!==0)fbSendAction({type:'spike'});
         }
-      } else if(!myP.onGround&&spikeHeld[mySlot]&&!spikeFired[mySlot]){
-        spikeFired[mySlot]=true;
-        doHitLocal(mySlot,0.9,'spike');
-        if(mySlot!==0)fbSendAction({type:'spike'});
       }
       gravTick(myP,mySlot);
     }
 
-    // ── Host only: run ball + push state ─────────────────────────────
+    // ── Guest: also send key state every frame ────────────────────────
+    if(mySlot!==0)sendKeys();
+
     if(mySlot===0){
-      // Also apply gravity to guest's player on host side
       if(PL[2])gravTick(PL[2],2);
-      ballTrail.push({x:ball.x,y:ball.y,life:1});
-      if(ballTrail.length>20)ballTrail.shift();
-      ballTrail.forEach(t=>t.life-=0.065);
-      ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
-      ball.spin+=ball.vx*.05;ball.vx*=.996;
-      if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
-      if(ball.x+BR>W){ball.x=W-BR;ball.vx=-Math.abs(ball.vx)*.75;}
-      if(ball.y-BR<0){ball.y=BR;ball.vy=Math.abs(ball.vy)*.65;}
-      const _nx=nx(),_nt=nt(),_fl=fl();
-      if(ball.x+BR>_nx-NW/2&&ball.x-BR<_nx+NW/2&&ball.y+BR>_nt){
-        ball.vx=ball.vx>0?-Math.abs(ball.vx)*.55:Math.abs(ball.vx)*.55;
-        ball.x=ball.vx<0?_nx-NW/2-BR:_nx+NW/2+BR;
-        ball.vy*=.65;
+      if(phase==='playing'){
+        ballTrail.push({x:ball.x,y:ball.y,life:1});
+        if(ballTrail.length>20)ballTrail.shift();
+        ballTrail.forEach(t=>t.life-=0.065);
+        ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
+        ball.spin+=ball.vx*.05;ball.vx*=.996;
+        if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
+        if(ball.x+BR>W){ball.x=W-BR;ball.vx=-Math.abs(ball.vx)*.75;}
+        if(ball.y-BR<0){ball.y=BR;ball.vy=Math.abs(ball.vy)*.65;}
+        const _nx=nx(),_nt=nt(),_fl=fl();
+        if(ball.x+BR>_nx-NW/2&&ball.x-BR<_nx+NW/2&&ball.y+BR>_nt){
+          ball.vx=ball.vx>0?-Math.abs(ball.vx)*.55:Math.abs(ball.vx)*.55;
+          ball.x=ball.vx<0?_nx-NW/2-BR:_nx+NW/2+BR;
+          ball.vy*=.65;
+        }
+        if(ball.y+BR>=_fl){
+          localStats.longestRally=Math.max(localStats.longestRally,rallyHits);
+          spawnParts(ball.x,_fl,'#ffcc02',40);spawnParts(ball.x,_fl-20,'#ff5722',20);
+          shake(14,18);awardLocal(ball.x<_nx?0:1);return;
+        }
+        PL.forEach(p=>{
+          if(!p)return;
+          const cx2=p.x+PW/2,cy2=p.y,ddx=ball.x-cx2,ddy=ball.y-cy2;
+          const dist=Math.sqrt(ddx*ddx+ddy*ddy),md=BR+PW*.85;
+          if(dist<md&&dist>0){const ndx=ddx/dist,ndy=ddy/dist;ball.x=cx2+ndx*(md+1);ball.y=cy2+ndy*(md+1);ball.vx+=ndx*1.2;ball.vy+=ndy*1.2;}
+        });
+        checkLocalBlocks();
       }
-      if(ball.y+BR>=_fl){
-        localStats.longestRally=Math.max(localStats.longestRally,rallyHits);
-        spawnParts(ball.x,_fl,'#ffcc02',40);spawnParts(ball.x,_fl-20,'#ff5722',20);
-        shake(14,18);awardLocal(ball.x<_nx?0:1);return;
-      }
-      PL.forEach(p=>{
-        if(!p)return;
-        const cx2=p.x+PW/2,cy2=p.y,ddx=ball.x-cx2,ddy=ball.y-cy2;
-        const dist=Math.sqrt(ddx*ddx+ddy*ddy),md=BR+PW*.85;
-        if(dist<md&&dist>0){const ndx=ddx/dist,ndy=ddy/dist;ball.x=cx2+ndx*(md+1);ball.y=cy2+ndy*(md+1);ball.vx+=ndx*1.2;ball.vy+=ndy*1.2;}
-      });
-      checkLocalBlocks();
       fbPushState();
     } else {
       // ── Guest: extrapolate ball between Firebase updates ──────────
-      ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
-      ball.vx*=.996;
-      // Clamp to floor using the same FP constant (not fl() which varies)
-      if(ball.y+BR>H-FP)ball.y=H-FP-BR;
+      // Only extrapolate during active play — not during waiting/serve
+      if(phase==='playing'){
+        ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
+        ball.vx*=.996;
+        // Net collision for guest extrapolation
+        const _nx2=W/2,_nt2=H-FP-H*NHF;
+        if(ball.x+BR>_nx2-NW/2&&ball.x-BR<_nx2+NW/2&&ball.y+BR>_nt2){
+          ball.vx=ball.vx>0?-Math.abs(ball.vx)*.55:Math.abs(ball.vx)*.55;
+          ball.x=ball.vx<0?_nx2-NW/2-BR:_nx2+NW/2+BR;
+          ball.vy*=.65;
+        }
+        if(ball.y+BR>H-FP)ball.y=H-FP-BR;
+      }
       ballTrail.push({x:ball.x,y:ball.y,life:1});
       if(ballTrail.length>20)ballTrail.shift();
       ballTrail.forEach(t=>t.life-=0.065);
@@ -1087,15 +1130,9 @@ function predictBall(){
 }
 function humanX(){return PL[0]?PL[0].x+PW/2:W*0.25;}
 
-// ── Minimal ID3 Decision Tree ─────────────────────────────────────────────
-// Samples: {hxB, bxB, lastShot, zone, win}
-// hxB = human x bucketed (0-2), bxB = ball x bucketed (0-2)
-// lastShot = human's last hit type (0=bump,1=set,2=spike)
-// zone = which zone AI spiked to (0=near,1=mid,2=deep), win = did AI win
-
 let dtSamples=[];
 let dtTree=null;
-let dtPending=null;   // pending sample waiting for point outcome
+let dtPending=null;
 let dtLastHumanShot=0;
 let dtAdaptSpd=1.0;
 
@@ -1146,7 +1183,6 @@ function dtOnPoint(aiWon){
     const wr=recent.filter(d=>d.win).length/recent.length;
     dtAdaptSpd=0.85+wr*0.35;
   }
-  // Save brain to persistent storage after every point
   dtSave();
 }
 
@@ -1189,16 +1225,7 @@ function showBrainStatus(){
   }
 }
 
-// ── Main AI state ─────────────────────────────────────────────────────────
 let aiState={blocking:false,blockCool:0};
-
-// Simulate ball landing position
-function predictBall(){
-  let px=ball.x,py=ball.y,pvx=ball.vx,pvy=ball.vy,st=0;
-  while(py<fl()-BR&&st<220){pvy+=G;px+=pvx;py+=pvy;st++;}
-  return{x:px,steps:st};
-}
-function humanX(){return PL[0]?PL[0].x+PW/2:W*0.25;}
 
 function aiTick(){
   const ai=PL[2];if(!ai)return;
@@ -1209,7 +1236,6 @@ function aiTick(){
   const pred=predictBall();
   const hx=humanX();
 
-  // ── Blocking ─────────────────────────────────────────────────────────
   if(aiState.blockCool>0)aiState.blockCool--;
   if(!aiState.blocking&&!ai.onGround&&aiState.blockCool===0){
     const rushing=ball.vx<-7&&ball.x<nx()+100&&ball.y<fl()-60;
@@ -1220,15 +1246,11 @@ function aiTick(){
     }
   }
 
-  // ── Positioning ──────────────────────────────────────────────────────
   const err=(Math.random()-.5)*cfg.err*(onSide?1:0.25);
   let tx;
   if(!onSide){
-    // Ball on player's side — anticipate where spike will land
-    // Aim to stand away from where human usually aims (opposite side of court)
-    const humanIsLeft=hx<nx()*0.5; // human standing near net or deep?
+    const humanIsLeft=hx<nx()*0.5;
     if(diff==='hard'){
-      // Hard: actively position to cover the open court gap
       tx=humanIsLeft?nx()+W*0.30:nx()+W*0.08;
     } else if(diff==='med'){
       tx=nx()+W*0.18;
@@ -1236,13 +1258,10 @@ function aiTick(){
       tx=nx()+W*0.20;
     }
   } else if(hn===0){
-    // First touch: track ball directly
     tx=ball.x-PW/2+err;
   } else if(hn===1){
-    // After bump: move to spike position near net
     tx=diff==='easy'?ball.x-PW/2+err:nx()+55+err*0.3;
   } else {
-    // Third hit: get under predicted landing
     tx=pred.x-PW/2+err*0.15;
     tx=Math.max(nx()+35,Math.min(slotMaxX(2)-PW-10,tx));
   }
@@ -1250,15 +1269,12 @@ function aiTick(){
   const dx=tx-ai.x;
   if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(cfg.spd,Math.abs(dx));
 
-  // ── Jump timing ──────────────────────────────────────────────────────
   if(ai.onGround&&onSide){
     const dist=Math.abs(ball.x-aiCx);
     if(hn===2){
-      // Spike jump: ball needs to be at a good height
       const goodHeight=ball.y<fl()-cfg.jt&&ball.y>nt()+40;
       if(goodHeight&&dist<140){ai.vy=JV;ai.onGround=false;}
     } else if(hn===1){
-      // Small hop to set better
       if(dist<90&&ball.y<fl()-cfg.jt*0.75){ai.vy=JV*0.78;ai.onGround=false;}
     } else if(hn===0&&diff==='hard'){
       if(dist<55&&ball.y<fl()-cfg.jt*0.5){ai.vy=JV*0.55;ai.onGround=false;}
@@ -1266,7 +1282,6 @@ function aiTick(){
   }
   gravTick(ai,2);
 
-  // ── Hit decision ──────────────────────────────────────────────────────
   if(aiCool>0){aiCool--;return;}
   if(!onSide||sideHits[1]>=3)return;
   if(Math.random()>cfg.sc)return;
@@ -1280,7 +1295,6 @@ function aiTick(){
     skill='set';
   } else {
     if(!isAirborne(ai)){aiCool=5;return;}
-    // Tip when human is close to net, spike otherwise
     const humanNearNet=hx>nx()-80;
     const tipChance=diff==='hard'?0.30:diff==='med'?0.15:0.03;
     skill=humanNearNet&&Math.random()<tipChance?'tip':'spike';
@@ -1295,14 +1309,12 @@ function aiTick(){
 
     doHitLocal(2,cfg.pwr(),captSkill);
 
-    // Smart aim: nudge spike away from where human is standing
     if(captSkill==='spike'){
       const hx2=humanX();
-      // Target the zone furthest from human
       const courtW=nx()-NW/2-BR;
       const targetX=hx2<courtW*0.5
-        ? courtW*0.85  // human is near net → aim deep
-        : courtW*0.12; // human is deep → aim near net (drop shot)
+        ? courtW*0.85
+        : courtW*0.12;
       const nudge=diff==='hard'?3.5:diff==='med'?2:0;
       if(nudge>0)ball.vx+=Math.sign(targetX-ball.x)*nudge;
     }
@@ -1321,7 +1333,7 @@ function awardLocal(losingSide){
   if(score[0]>=WPWIN&&score[0]-score[1]>=2){
     sets[0]++;score[0]=0;score[1]=0;serving=0;
     over=sets[0]>=WSWIN;msg=over?`🏆 ${names[0]} WINS!`:`SET — ${names[0]}!`;
-  } else if(score[1]>=WPWIN&&score[1]-score[0]>=2){
+  } else if(score[1]>=WPWIN&&score[1]-score[1-1]>=2){
     sets[1]++;score[0]=0;score[1]=0;serving=2;
     over=sets[1]>=WSWIN;msg=over?`🏆 ${names[1]} WINS!`:`SET — ${names[1]}!`;
   } else {
@@ -1354,7 +1366,7 @@ function hideOv(){const el=document.getElementById('ovm');el.classList.remove('s
 function doFlash(msg,col,ms=480,big=false){
   const el=document.getElementById('ovm');
   el.classList.remove('show','spike-pop');
-  void el.offsetWidth; // force reflow so animation restarts
+  void el.offsetWidth;
   el.textContent=msg;el.style.color=col;
   el.style.textShadow=big
     ?`0 0 60px ${col},0 0 20px ${col},6px 6px 0 #000`
@@ -1376,7 +1388,7 @@ function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
   charge=[null,null,null,null];blockingSlots.clear();aiCool=0;parts=[];ballTrail=[];spikeHeld=[false,false,false,false];spikeFired=[false,false,false,false];spikeCool=[0,0,0,0];
   dtPending=null;dtLastHumanShot=0;
-  dtLoad(); // restore memory from previous sessions
+  dtLoad();
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
@@ -1495,7 +1507,6 @@ function draw(){
     localSlots().forEach(slot=>{const p=PL[slot];if(p)drawRing(slot,p);});
     localSlots().forEach(slot=>{const p=PL[slot];if(p&&charge[slot])drawArc(slot,p);});
 
-    // Draw spike range indicator when holding click and airborne
     localSlots().forEach(slot=>{
       const p=PL[slot];if(!p)return;
       if(charge[slot]&&charge[slot].skill==='spike'&&isAirborne(p)){
@@ -1518,7 +1529,6 @@ function drawRing(slot,p){
   const bside=side===0?ball.x<nx():ball.x>=nx();
   
   if(hn===2){
-    // Spike ring — uses larger radius, always show if ball roughly on side
     if(dist>SPIKE_HR*1.4)return;
     const t=Math.max(0,1-dist/(SPIKE_HR*1.2));
     cx.save();cx.strokeStyle='#ff5722';cx.shadowColor='#ff5722';cx.shadowBlur=5;
@@ -1601,13 +1611,8 @@ let lastTs=0;
 function loop(ts){
   animId=requestAnimationFrame(loop);
   if(ts-lastTs<14)return;lastTs=ts;
-  if(phase==='playing'){
-    if(gmode==='online'){
-      physTick(); // everyone runs physics
-      if(mySlot!==0)sendKeys(); // guest also sends inputs to host
-    } else {
-      physTick();
-    }
+  if(phase==='playing'||phase==='waiting'){
+    physTick();
     tickParts();
   } else tickParts();
   tickPbars();tickShake();updateSkillBar();draw();
