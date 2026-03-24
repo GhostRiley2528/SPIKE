@@ -1125,6 +1125,10 @@ function physTick(){
     }
     gravTick(p,slot);
   });
+  if(phase!=='playing'){
+    ballTrail=[];
+    return;
+  }
   ballTrail.push({x:ball.x,y:ball.y,life:1});
   if(ballTrail.length>20)ballTrail.shift();
   ballTrail.forEach(t=>t.life-=0.065);
