@@ -2077,7 +2077,7 @@ function awardLocal(losingSide){
   }
   if(gmode==='online'&&mySlot===0)fbPushEvent({type:"point",win,msg,sc0:score[0],sc1:score[1],st0:sets[0],st1:sets[1],sv:serving});
   showOv(msg);
-  setTimeout(()=>{hideOv();resetPositions();sideHits=[0,0];lastHitSide=-1;lastHitSlot=-1;updateSkillBar();phase='waiting';const srvN2=gmode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');setHm(srvN2+' SERVES — Press F or Enter');},1500);
+  roundResetTimer=setTimeout(()=>{roundResetTimer=null;hideOv();resetPositions();sideHits=[0,0];lastHitSide=-1;lastHitSlot=-1;updateSkillBar();phase='waiting';const srvN2=gmode==='ai'?'YOU':'P'+(slotSide(serving)===0?'1':'2');setHm(srvN2+' SERVES — Press F or Enter');},1500);
 }
 
 // ── PARTICLES ─────────────────────────────────────────────────────────────
