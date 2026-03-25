@@ -355,7 +355,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
   <div class="admin-card" id="admin-card">
     <div class="admin-title" id="admin-title">Dev Panel</div>
     <div class="admin-sec" id="admin-rank-sec">
-      <div class="admin-hint">RANKK: edit rank/rating and W/L record for any username.</div>
+      <div class="admin-hint">RANKK: edit rank/rating and W/L record for any username. Cross-user writes require Firebase rules permission.</div>
       <div class="admin-row">
         <input id="admin-rank-user" class="admin-input" placeholder="USERNAME (blank = me)" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"/>
       </div>
@@ -371,7 +371,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       </div>
     </div>
     <div class="admin-sec" id="admin-stats-sec">
-      <div class="admin-hint">STATSS: edit gameplay multipliers (0.5 to 3.0) for local slots and optional username profile.</div>
+      <div class="admin-hint">STATSS: edit gameplay multipliers (0.5 to 3.0) for local slots and optional username profile. Cross-user writes require Firebase rules permission.</div>
       <div class="admin-row">
         <input id="admin-stats-target" class="admin-input" placeholder="Target: SELF / P2 / BOT" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'')"/>
         <input id="admin-stats-user" class="admin-input" placeholder="USERNAME to save profile (optional)" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"/>
@@ -1231,6 +1231,8 @@ function doHitLocal(slot,pwr,skill,force=false){
   if(isWebTrapped(slot)){flashWrong(slot,skill);return;}
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
+  if(lastHitSide>=0&&lastHitSide!==side){sideHits[1-side]=0;lastHitSlot=-1;}
+  if(sideHits[side]>=3){if(!force)flashWrong(slot,skill);return;}
 
   if(!force&&!(gmode==='online'&&mySlot!==0)){
     if(skill==='spike'){
@@ -1240,8 +1242,6 @@ function doHitLocal(slot,pwr,skill,force=false){
       if(side===0?ball.x>=nx():ball.x<nx()){flashWrong(slot,skill);return;}
       if(!inRange(slot)){flashWrong(slot,skill);return;}
     }
-    if(sideHits[side]>=3){flashWrong(slot,skill);return;}
-    if(lastHitSide>=0&&lastHitSide!==side){sideHits[1-side]=0;lastHitSlot=-1;}
     if(skill!=='spike'&&slot===lastHitSlot&&lastHitSide===side&&sideHits[side]>0){flashWrong(slot,skill);return;}
   }
 
@@ -1441,6 +1441,10 @@ function readStatsInputs(){
 function currentUserName(){
   return normalizeUsername((currentProfile&&currentProfile.username)||(currentProfile&&currentProfile.displayName)||'');
 }
+function isPermErr(e){
+  const s=((e&&e.code)||'')+' '+((e&&e.message)||'');
+  return /permission|PERMISSION_DENIED|denied/i.test(s);
+}
 async function resolveUidByUsername(name){
   const normalized=normalizeUsername(name||'');
   if(!normalized)return currentUser&&currentUser.uid?currentUser.uid:null;
@@ -1469,7 +1473,10 @@ async function adminApplyRank(){
     await fbDb.ref(`${PROFILE_PATH}/${uid}`).update(updates);
     if(currentUser&&uid===currentUser.uid){await loadCurrentProfile(uid);}
     setAdminMessage('Rank profile updated.');
-  }catch(e){setAdminMessage(e.message||'Rank update failed.',true);}
+  }catch(e){
+    if(isPermErr(e))setAdminMessage('Permission denied by Firebase rules for cross-user rank edit.',true);
+    else setAdminMessage(e.message||'Rank update failed.',true);
+  }
 }
 async function adminResetRank(){
   if(activeSecretCode!=='RANKK'){setAdminMessage('Enter RANKK first.',true);return;}
@@ -1486,7 +1493,10 @@ async function adminResetRank(){
     const rl=document.getElementById('admin-rank-losses');if(rl)rl.value='0';
     const rg=document.getElementById('admin-rank-games');if(rg)rg.value='0';
     setAdminMessage('Rank reset to defaults.');
-  }catch(e){setAdminMessage(e.message||'Rank reset failed.',true);}
+  }catch(e){
+    if(isPermErr(e))setAdminMessage('Permission denied by Firebase rules for cross-user rank reset.',true);
+    else setAdminMessage(e.message||'Rank reset failed.',true);
+  }
 }
 async function adminApplyStats(){
   if(activeSecretCode!=='STATSS'){setAdminMessage('Enter STATSS first.',true);return;}
@@ -1512,7 +1522,10 @@ async function adminApplyStats(){
     } else if(slot===null){
       setAdminMessage('Set target slot or username.',true);
     }
-  }catch(e){setAdminMessage(e.message||'Stats update failed.',true);}
+  }catch(e){
+    if(isPermErr(e))setAdminMessage('Permission denied by Firebase rules for cross-user stats edit. Local target (SELF/P2/BOT) still works.',true);
+    else setAdminMessage(e.message||'Stats update failed.',true);
+  }
 }
 async function adminResetStats(){
   if(activeSecretCode!=='STATSS'){setAdminMessage('Enter STATSS first.',true);return;}
@@ -1536,7 +1549,10 @@ async function adminResetStats(){
       const el=document.getElementById(id);if(el)el.value='1';
     });
     setAdminMessage('Stats reset to 1.0 defaults.');
-  }catch(e){setAdminMessage(e.message||'Stats reset failed.',true);}
+  }catch(e){
+    if(isPermErr(e))setAdminMessage('Permission denied by Firebase rules for cross-user stats reset. Local target reset still works.',true);
+    else setAdminMessage(e.message||'Stats reset failed.',true);
+  }
 }
 function updateSecretPanelStatus(){
   const card=document.getElementById('secret-card');
@@ -2958,20 +2974,12 @@ function aiTick(){
   if(ai.onGround&&aiState.blockCool===0){
     const incomingSpike=ball.vx>2.8&&ball.x>nx()-26&&ball.x<nx()+170&&ball.y<fl()-36;
     const nearNet=Math.abs((ai.x+PW/2)-nx())<125;
-    const blockChance=diff==='hard'?0.92:diff==='med'?0.65:0.32;
+    const blockChance=diff==='hard'?0.82:diff==='med'?0.56:0.26;
     if(incomingSpike&&nearNet&&Math.random()<blockChance){
       ai.vy=JV*(diff==='hard'?1.06:1.0);
       ai.onGround=false;
       aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
-      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=42;updateSkillBar();},diff==='hard'?390:320);
-    }
-  }
-  if(!aiState.blocking&&!ai.onGround&&aiState.blockCool===0){
-    const rushing=ball.vx<-7&&ball.x<nx()+100&&ball.y<fl()-60;
-    const chance=diff==='hard'?0.7:diff==='med'?0.4:0.05;
-    if(rushing&&Math.random()<chance){
-      aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
-      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=45;updateSkillBar();},350);
+      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=58;updateSkillBar();},diff==='hard'?360:300);
     }
   }
 
@@ -2993,13 +3001,6 @@ function aiTick(){
   if(ai.onGround&&onSide){
     const dist=Math.abs(ball.x-aiCx);
     if(botShouldJump(ai,hn,onSide,dist)){ai.vy=hn>=2?JV:(hn===1?JV*0.78:JV*0.55);ai.onGround=false;}
-  }
-  // Extra block jump near net when incoming attack is crossing.
-  if(ai.onGround&&ball.vx>2.6&&ball.x>nx()-24&&ball.x<nx()+130&&Math.abs((ai.x+PW/2)-nx())<118&&aiState.blockCool===0){
-    ai.vy=JV*(diff==='hard'?1.08:diff==='med'?1.03:1.0);
-    ai.onGround=false;
-    aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
-    setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=36;updateSkillBar();},diff==='hard'?430:350);
   }
   gravTick(ai,2);
 
@@ -3027,22 +3028,22 @@ function aiTick(){
   }
 
   // Global spike fallback for bot: if ball is on bot side and in spike range, finish aggressively.
-  if(onSide&&phase==='playing'&&hn>=1&&aiCool<=0&&inRangeForSkill(2,'spike')){
+  if(onSide&&phase==='playing'&&hn>=2&&aiCool<=0&&inRangeForSkill(2,'spike')){
     if(ai.onGround&&ball.y<fl()-34){
       ai.vy=JV*(diff==='hard'?1.08:diff==='med'?1.04:1.0);
       ai.onGround=false;
     }
     doHitLocal(2,Math.max(aiTune.pwrFloor,cfg.pwr()),'spike',true);
     botAttackNudge('spike',humanX());
-    aiCool=diff==='hard'?5:diff==='med'?7:9;
+    aiCool=diff==='hard'?10:diff==='med'?12:15;
     return;
   }
   // Ultra fallback: if spike range misses but ball is still reachable, force a spike clear.
   const nearReach=Math.sqrt((ball.x-(ai.x+PW/2))**2+(ball.y-ai.y)**2)<HR*1.25;
-  if(onSide&&phase==='playing'&&hn>=1&&aiCool<=0&&nearReach&&ball.y<fl()-14){
+  if(onSide&&phase==='playing'&&hn>=2&&aiCool<=0&&nearReach&&ball.y<fl()-14){
     doHitLocal(2,1,'spike',true);
     botAttackNudge('spike',humanX());
-    aiCool=diff==='hard'?4:diff==='med'?6:8;
+    aiCool=diff==='hard'?9:diff==='med'?11:14;
     return;
   }
 
