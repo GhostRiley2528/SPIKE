@@ -367,6 +367,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       </div>
       <div class="admin-row">
         <button class="admin-btn" type="button" onclick="adminApplyRank()">Apply Rank</button>
+        <button class="admin-btn" type="button" onclick="adminResetRank()">Reset Rank</button>
       </div>
     </div>
     <div class="admin-sec" id="admin-stats-sec">
@@ -387,6 +388,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       </div>
       <div class="admin-row">
         <button class="admin-btn" type="button" onclick="adminApplyStats()">Apply Stats</button>
+        <button class="admin-btn" type="button" onclick="adminResetStats()">Reset Stats</button>
       </div>
     </div>
     <div class="admin-msg" id="admin-msg"></div>
@@ -1469,6 +1471,23 @@ async function adminApplyRank(){
     setAdminMessage('Rank profile updated.');
   }catch(e){setAdminMessage(e.message||'Rank update failed.',true);}
 }
+async function adminResetRank(){
+  if(activeSecretCode!=='RANKK'){setAdminMessage('Enter RANKK first.',true);return;}
+  try{
+    const user=(document.getElementById('admin-rank-user')?.value||'').trim();
+    const uid=await resolveUidByUsername(user);
+    if(!uid){setAdminMessage('User not found.',true);return;}
+    if(!fbInit()){setAdminMessage('Firebase unavailable.',true);return;}
+    const base={rating:1000,wins:0,losses:0,games:0};
+    await fbDb.ref(`${PROFILE_PATH}/${uid}`).update(base);
+    if(currentUser&&uid===currentUser.uid){await loadCurrentProfile(uid);}
+    const rr=document.getElementById('admin-rank-rating');if(rr)rr.value='1000';
+    const rw=document.getElementById('admin-rank-wins');if(rw)rw.value='0';
+    const rl=document.getElementById('admin-rank-losses');if(rl)rl.value='0';
+    const rg=document.getElementById('admin-rank-games');if(rg)rg.value='0';
+    setAdminMessage('Rank reset to defaults.');
+  }catch(e){setAdminMessage(e.message||'Rank reset failed.',true);}
+}
 async function adminApplyStats(){
   if(activeSecretCode!=='STATSS'){setAdminMessage('Enter STATSS first.',true);return;}
   try{
@@ -1494,6 +1513,30 @@ async function adminApplyStats(){
       setAdminMessage('Set target slot or username.',true);
     }
   }catch(e){setAdminMessage(e.message||'Stats update failed.',true);}
+}
+async function adminResetStats(){
+  if(activeSecretCode!=='STATSS'){setAdminMessage('Enter STATSS first.',true);return;}
+  try{
+    const stats={...DEF_STAT_MUL};
+    const targetRaw=document.getElementById('admin-stats-target')?.value||'';
+    const slot=resolveLocalTargetSlot(targetRaw);
+    if(slot!==null){
+      applyStatsToSlot(slot,stats);
+      if(gmode==='online'&&mySlot>=0&&slot===0)applyStatsToSlot(mySlot,stats);
+    }
+    const user=(document.getElementById('admin-stats-user')?.value||'').trim()||currentUserName();
+    if(user&&fbInit()){
+      const uid=await resolveUidByUsername(user);
+      if(uid){
+        await fbDb.ref(`${PROFILE_PATH}/${uid}/customStats`).set(stats);
+        if(currentUser&&uid===currentUser.uid){await loadCurrentProfile(uid);}
+      }
+    }
+    ['admin-st-speed','admin-st-jump','admin-st-spike','admin-st-set','admin-st-bump','admin-st-block'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.value='1';
+    });
+    setAdminMessage('Stats reset to 1.0 defaults.');
+  }catch(e){setAdminMessage(e.message||'Stats reset failed.',true);}
 }
 function updateSecretPanelStatus(){
   const card=document.getElementById('secret-card');
@@ -1674,6 +1717,9 @@ function tierLabel(v){
   const tier=tierForRating(v);
   return `${tier.name} ${formatRating(v)}`;
 }
+function escHtml(s){
+  return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 function botOpponentRating(){
   return diff==='hard'?1180:diff==='med'?1000:860;
 }
@@ -1772,7 +1818,11 @@ async function refreshLeaderboard(){
   try{
     const snap=await fbDb.ref(PROFILE_PATH).once('value');
     const rows=[];
-    snap.forEach(child=>rows.push({uid:child.key,...child.val()}));
+    snap.forEach(child=>{
+      const v=child.val();
+      if(!v||typeof v!=='object')return;
+      rows.push({uid:child.key,...v});
+    });
     rows.sort((a,b)=>(b.rating||1000)-(a.rating||1000)||((b.wins||0)-(a.wins||0)));
     if(!rows.length){
       listEl.innerHTML='<div class="lb-empty">No ranked players yet.</div>';
@@ -2926,6 +2976,11 @@ function aiTick(){
   }
 
   let tx=botTargetX(ai,pred,hx,hn,onSide);
+  // If player is attacking toward bot side, bias bot to net for active blocks.
+  if(!onSide&&ball.vx>2.4){
+    const netGuard=nx()+46;
+    tx=Math.max(tx,netGuard);
+  }
   if(onSide&&hn===0&&ball.y<fl()-130&&Math.abs(ball.vx)>3){
     // Fast high balls: bias ahead of trajectory for cleaner first contact.
     tx+=(ball.vx>0?14:-8);
@@ -2938,6 +2993,13 @@ function aiTick(){
   if(ai.onGround&&onSide){
     const dist=Math.abs(ball.x-aiCx);
     if(botShouldJump(ai,hn,onSide,dist)){ai.vy=hn>=2?JV:(hn===1?JV*0.78:JV*0.55);ai.onGround=false;}
+  }
+  // Extra block jump near net when incoming attack is crossing.
+  if(ai.onGround&&ball.vx>2.6&&ball.x>nx()-24&&ball.x<nx()+130&&Math.abs((ai.x+PW/2)-nx())<118&&aiState.blockCool===0){
+    ai.vy=JV*(diff==='hard'?1.08:diff==='med'?1.03:1.0);
+    ai.onGround=false;
+    aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
+    setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=36;updateSkillBar();},diff==='hard'?430:350);
   }
   gravTick(ai,2);
 
@@ -2973,6 +3035,14 @@ function aiTick(){
     doHitLocal(2,Math.max(aiTune.pwrFloor,cfg.pwr()),'spike',true);
     botAttackNudge('spike',humanX());
     aiCool=diff==='hard'?5:diff==='med'?7:9;
+    return;
+  }
+  // Ultra fallback: if spike range misses but ball is still reachable, force a spike clear.
+  const nearReach=Math.sqrt((ball.x-(ai.x+PW/2))**2+(ball.y-ai.y)**2)<HR*1.25;
+  if(onSide&&phase==='playing'&&hn>=1&&aiCool<=0&&nearReach&&ball.y<fl()-14){
+    doHitLocal(2,1,'spike',true);
+    botAttackNudge('spike',humanX());
+    aiCool=diff==='hard'?4:diff==='med'?6:8;
     return;
   }
 
