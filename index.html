@@ -2223,7 +2223,7 @@ function clearTransientMatchState(){
 }
 
 function activateOracleWeb(casterSlot=0,authoritative=false){
-  if(!oracleUnlocked){setHm('ORACLE_M4 is locked. Use secret code first.');return;}
+  if(!oracleUnlocked){setHm('Use secret code first.');return;}
   if(phase!=='playing'){setHm('ORACLE web can only be used during a rally.');return;}
   if(gmode==='online'){
     if(casterSlot!==mySlot&&!authoritative)return;
@@ -2260,7 +2260,7 @@ function applyMirageEffect(casterSlot,durMs=7000){
 }
 
 function activateMirage(casterSlot=0){
-  if(!mirageUnlocked){setHm('MIRAGE_83 is locked. Use secret code first.');return;}
+  if(!mirageUnlocked){setHm('Use secret code first.');return;}
   if(phase!=='playing'){setHm('MIRAGE can only be used during a rally.');return;}
   if(gmode==='online'){
     if(casterSlot!==mySlot)return;
