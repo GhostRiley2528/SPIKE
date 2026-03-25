@@ -1220,7 +1220,8 @@ function doHitLocal(slot,pwr,skill,force=false){
 }
 
 function checkLocalBlocks(){
-  localSlots().forEach(slot=>{
+  const blockSlots=(gmode==='ai')?[0,2]:localSlots();
+  blockSlots.forEach(slot=>{
     const p=PL[slot];if(!p||!blockingSlots.has(slot)||p.onGround)return;
     const side=slotSide(slot);
     const cx2=p.x+PW/2,cy2=p.y;
@@ -2748,6 +2749,18 @@ function aiTick(){
       aiCool=aiTune.coolMin+1;
       return;
     }
+  }
+
+  // Global spike fallback for bot: if ball is on bot side and in spike range, finish aggressively.
+  if(onSide&&phase==='playing'&&hn>=1&&aiCool<=0&&inRangeForSkill(2,'spike')){
+    if(ai.onGround&&ball.y<fl()-34){
+      ai.vy=JV*(diff==='hard'?1.08:diff==='med'?1.04:1.0);
+      ai.onGround=false;
+    }
+    doHitLocal(2,Math.max(aiTune.pwrFloor,cfg.pwr()),'spike',true);
+    botAttackNudge('spike',humanX());
+    aiCool=diff==='hard'?5:diff==='med'?7:9;
+    return;
   }
 
   if(aiCool>0){aiCool--;return;}
