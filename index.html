@@ -176,8 +176,11 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 .mctl.block{border-color:#00ff88;color:#00ff88;text-shadow:0 0 10px #00ff88}
 .mctl.tip{border-color:#ff2d78;color:#ff2d78;text-shadow:0 0 10px #ff2d78}
 .mctl:active,.mctl.active{transform:translateY(1px) scale(.97);background:linear-gradient(180deg,#ffffff30,#00000066)}
+#orientation-tip{position:absolute;left:50%;bottom:calc(112px + env(safe-area-inset-bottom));transform:translateX(-50%);display:none;z-index:19;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;color:var(--ye);padding:6px 12px;border:1px solid #ffcc0260;border-radius:999px;background:#00000080;text-shadow:0 0 10px #ffcc02;pointer-events:none}
+#mobile-hand-toggle{position:absolute;right:10px;bottom:calc(112px + env(safe-area-inset-bottom));display:none;z-index:19;font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.08em;color:#fff;background:#0000009a;border:1px solid #ffffff4a;border-radius:999px;padding:7px 12px;pointer-events:auto}
 body.mobile-mode{overflow:hidden}
 body.mobile-mode #mobile-ui{display:flex}
+body.mobile-mode #mobile-hand-toggle{display:block}
 body.mobile-mode #game{padding-bottom:0}
 body.mobile-mode #hud{height:60px;padding:0 10px}
 body.mobile-mode .hsc{font-size:32px;gap:10px}
@@ -185,6 +188,16 @@ body.mobile-mode #skbar{padding:3px 10px;min-height:30px}
 body.mobile-mode .skgrp{gap:3px}
 body.mobile-mode .skb{font-size:9px;padding:2px 5px}
 body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
+body.mobile-mode.mobile-lefty #mobile-ui{flex-direction:row-reverse}
+body.mobile-mode.mobile-portrait #orientation-tip{display:block}
+body.mobile-mode.mobile-landscape #orientation-tip{display:none}
+body.mobile-mode.mobile-landscape #mobile-ui{padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
+body.mobile-mode.mobile-landscape #mobile-hand-toggle{bottom:calc(78px + env(safe-area-inset-bottom));font-size:12px;padding:5px 10px}
+body.mobile-mode.mobile-landscape .mobile-cluster{gap:7px}
+body.mobile-mode.mobile-landscape .mobile-pad{grid-template-columns:repeat(4,56px);gap:8px}
+body.mobile-mode.mobile-landscape .mobile-actions{grid-template-columns:repeat(5,56px);gap:8px}
+body.mobile-mode.mobile-landscape .mctl{width:56px;height:56px;border-radius:14px;font-size:15px}
+body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
 @media (max-width: 900px){
   .menu-shell{padding:1rem .7rem .8rem}
   .menu-btns{grid-template-columns:1fr}
@@ -370,6 +383,8 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
         </div>
       </div>
     </div>
+    <div id="orientation-tip">Rotate to landscape for better controls</div>
+    <button id="mobile-hand-toggle" type="button" onclick="toggleMobileHandedness()">Lefty Layout</button>
     <div id="stats-screen">
       <div class="stats-box">
         <div class="stats-winner" id="stats-winner"></div>
@@ -398,6 +413,8 @@ function resize(){
   updateMobileUI();
 }
 window.addEventListener('resize',resize);
+window.addEventListener('orientationchange',()=>{setTimeout(resize,120);releaseAllMobileControls();},{passive:true});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',resize,{passive:true});
 
 const storageApi={
   async get(key){
@@ -666,11 +683,30 @@ function flashTap(slot,sk){
 function isMobileLayout(){
   return window.matchMedia('(pointer: coarse)').matches||window.innerWidth<=900;
 }
+function isLandscapeViewport(){
+  return window.innerWidth>window.innerHeight;
+}
 function mobilePrimarySlot(){
   return localSlots().includes(0)?0:(localSlots()[0]??null);
 }
+let mobileHandedness='right';
+function applyMobileHandedness(){
+  const lefty=mobileHandedness==='left';
+  document.body.classList.toggle('mobile-lefty',lefty);
+  const btn=document.getElementById('mobile-hand-toggle');
+  if(btn)btn.textContent=lefty?'Righty Layout':'Lefty Layout';
+}
+function toggleMobileHandedness(){
+  mobileHandedness=mobileHandedness==='left'?'right':'left';
+  applyMobileHandedness();
+  try{localStorage.setItem('spike.mobile.handedness',mobileHandedness);}catch(e){}
+}
 function updateMobileUI(){
-  document.body.classList.toggle('mobile-mode',isMobileLayout()&&gmode!=='online');
+  const mobile=isMobileLayout()&&gmode!=='online';
+  const landscape=mobile&&isLandscapeViewport();
+  document.body.classList.toggle('mobile-mode',mobile);
+  document.body.classList.toggle('mobile-landscape',landscape);
+  document.body.classList.toggle('mobile-portrait',mobile&&!landscape);
 }
 function mobilePress(control){
   const slot=mobilePrimarySlot();
@@ -703,15 +739,49 @@ function mobileRelease(control){
   if(['bump','set','tip','block'].includes(control))releaseCharge(slot,control);
 }
 
+const mobilePointerControl=new Map();
+function releaseAllMobileControls(){
+  ['a','d','ArrowLeft','ArrowRight',' ','ArrowUp'].forEach(k=>keys[k]=false);
+  const slot=mobilePrimarySlot();
+  if(slot!=null){
+    spikeHeld[slot]=false;
+    spikeFired[slot]=false;
+    ['bump','set','tip','block'].forEach(sk=>releaseCharge(slot,sk));
+  }
+  document.querySelectorAll('#mobile-ui .mctl.active').forEach(el=>el.classList.remove('active'));
+  mobilePointerControl.clear();
+}
 document.querySelectorAll('#mobile-ui [data-control]').forEach(btn=>{
   const control=btn.dataset.control;
-  const activate=e=>{e.preventDefault();btn.classList.add('active');mobilePress(control);};
-  const deactivate=e=>{e.preventDefault();btn.classList.remove('active');mobileRelease(control);};
-  btn.addEventListener('pointerdown',activate);
-  btn.addEventListener('pointerup',deactivate);
-  btn.addEventListener('pointercancel',deactivate);
-  btn.addEventListener('pointerleave',e=>{if(e.buttons)deactivate(e);});
+  const activate=e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    e.preventDefault();
+    btn.classList.add('active');
+    mobilePress(control);
+    if(btn.setPointerCapture)btn.setPointerCapture(e.pointerId);
+    mobilePointerControl.set(e.pointerId,control);
+  };
+  const deactivate=e=>{
+    const ctl=mobilePointerControl.get(e.pointerId);
+    if(!ctl)return;
+    e.preventDefault();
+    btn.classList.remove('active');
+    mobileRelease(ctl);
+    mobilePointerControl.delete(e.pointerId);
+  };
+  btn.addEventListener('pointerdown',activate,{passive:false});
+  btn.addEventListener('pointerup',deactivate,{passive:false});
+  btn.addEventListener('pointercancel',deactivate,{passive:false});
+  btn.addEventListener('lostpointercapture',deactivate,{passive:false});
 });
+window.addEventListener('blur',releaseAllMobileControls);
+window.addEventListener('pagehide',releaseAllMobileControls);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseAllMobileControls();});
+try{
+  const saved=localStorage.getItem('spike.mobile.handedness');
+  if(saved==='left'||saved==='right')mobileHandedness=saved;
+}catch(e){}
+applyMobileHandedness();
 
 // ── INPUT ─────────────────────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
