@@ -101,7 +101,13 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .secret-input{flex:1;padding:8px 10px;background:#ffffff11;border:1.5px solid #ffffff33;border-radius:6px;color:#fff;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.18em;text-transform:uppercase;outline:none}
 .secret-input:focus{border-color:var(--pk);box-shadow:0 0 10px #ff2d7840}
 .secret-apply{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.08em;padding:8px 14px;border:1.5px solid var(--pk);border-radius:6px;background:#ff2d7818;color:var(--pk);cursor:pointer}
+.secret-clear{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;padding:8px 12px;border:1.5px solid #ffffff55;border-radius:6px;background:#ffffff12;color:#fff;cursor:pointer}
 .secret-msg{min-height:16px;margin-top:6px;font-size:11px;letter-spacing:.05em;color:#fff8}
+.settings-card{position:relative;z-index:3;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:10px 12px;margin:.7rem auto 0;width:min(460px,92vw);backdrop-filter:blur(8px)}
+.settings-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.08em;color:var(--bl);text-shadow:0 0 10px #00d4ff55;margin-bottom:8px}
+.settings-row{display:flex;gap:8px;flex-wrap:wrap}
+.settings-btn{flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #ffffff33;border-radius:8px;background:#ffffff10;color:#fff;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;cursor:pointer}
+.settings-btn.on{border-color:var(--gr);color:var(--gr);background:#00ff8816;box-shadow:0 0 10px #00ff8833}
 .auth-box,.board-box{background:#ffffff0a;border:1px solid #ffffff22;border-radius:14px;padding:1.6rem 1.5rem;width:min(480px,92vw);backdrop-filter:blur(8px)}
 .auth-box h2,.board-box h2{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.08em;color:var(--ye);margin-bottom:1rem;text-align:center;text-shadow:0 0 12px var(--ye)}
 .auth-grid{display:grid;gap:10px}
@@ -236,7 +242,9 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
   .mbtn{width:100%}
   .acct-actions{flex-direction:column}
   .secret-row{flex-direction:column}
-  .secret-input,.secret-apply{width:100%}
+  .secret-input,.secret-apply,.secret-clear{width:100%}
+  .settings-row{flex-direction:column}
+  .settings-btn{width:100%}
   .ctrl-row-outer{grid-template-columns:1fr 1fr;gap:6px;padding:0 2px}
   .cc{padding:7px 9px}
   .cc p{font-size:9px}
@@ -304,8 +312,17 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       <div class="secret-row">
         <input id="secret-input" class="secret-input" maxlength="24" placeholder="ENTER CODE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_-]/g,'')" onkeydown="if(event.key==='Enter')applySecretCode()"/>
         <button class="secret-apply" type="button" onclick="applySecretCode()">Apply</button>
+        <button class="secret-clear" type="button" onclick="clearSecretCode()">Clear</button>
       </div>
       <div class="secret-msg" id="secret-msg">No active codes configured yet.</div>
+    </div>
+  </div>
+  <div class="settings-card">
+    <div class="settings-title">Settings</div>
+    <div class="settings-row">
+      <button class="settings-btn" id="set-sound" type="button" onclick="toggleSetting('sound')">Sound: ON</button>
+      <button class="settings-btn" id="set-shake" type="button" onclick="toggleSetting('shake')">Shake: ON</button>
+      <button class="settings-btn" id="set-trail" type="button" onclick="toggleSetting('trail')">Trail: ON</button>
     </div>
   </div>
   <div class="ctrl-row-outer">
@@ -514,11 +531,42 @@ function setDiff(d){
   ['easy','med','hard'].forEach(x=>{const el=document.getElementById('d-'+x);el.className='dbtn '+x+(x===d?' active':'');});
   showBotStatus();
 }
+let settings={sound:true,shake:true,trail:true};
+function saveSettings(){
+  try{localStorage.setItem('spike.settings',JSON.stringify(settings));}catch(e){}
+}
+function loadSettings(){
+  try{
+    const raw=localStorage.getItem('spike.settings');
+    if(!raw)return;
+    const d=JSON.parse(raw);
+    if(typeof d.sound==='boolean')settings.sound=d.sound;
+    if(typeof d.shake==='boolean')settings.shake=d.shake;
+    if(typeof d.trail==='boolean')settings.trail=d.trail;
+  }catch(e){}
+}
+function updateSettingsUI(){
+  const map=[['sound','set-sound','Sound'],['shake','set-shake','Shake'],['trail','set-trail','Trail']];
+  map.forEach(([k,id,label])=>{
+    const el=document.getElementById(id);if(!el)return;
+    const on=!!settings[k];
+    el.textContent=`${label}: ${on?'ON':'OFF'}`;
+    el.classList.toggle('on',on);
+  });
+}
+function toggleSetting(key){
+  if(!(key in settings))return;
+  settings[key]=!settings[key];
+  saveSettings();
+  updateSettingsUI();
+  setHm(`${key.toUpperCase()} ${settings[key]?'ON':'OFF'}`);
+}
 
 let audioCtx=null;
 let roundResetTimer=null;
 function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
 function playTone(freq,dur,type='sine',vol=0.18,decay=0.15){
+  if(!settings.sound)return;
   try{
     const a=getAudio(),o=a.createOscillator(),g=a.createGain();
     o.connect(g);g.connect(a.destination);
@@ -542,8 +590,12 @@ function sndPoint(){
 function sndTip(){playTone(420,0.1,'sine',0.1);}
 
 let shakeAmt=0,shakeDur=0;
-function shake(amt,dur){shakeAmt=Math.max(shakeAmt,amt);shakeDur=Math.max(shakeDur,dur);}
+function shake(amt,dur){
+  if(!settings.shake)return;
+  shakeAmt=Math.max(shakeAmt,amt);shakeDur=Math.max(shakeDur,dur);
+}
 function tickShake(){
+  if(!settings.shake){document.getElementById('cw').style.transform='';return;}
   if(shakeDur>0){shakeDur--;shakeAmt*=0.82;}else shakeAmt=0;
   if(shakeAmt>0.3){
     const sx=(Math.random()-.5)*shakeAmt,sy=(Math.random()-.5)*shakeAmt;
@@ -892,6 +944,12 @@ if(joystickEl){
 }
 
 const mobilePointerControl=new Map();
+function pushBallTrail(){
+  if(!settings.trail)return;
+  ballTrail.push({x:ball.x,y:ball.y,life:1});
+  if(ballTrail.length>20)ballTrail.shift();
+  ballTrail.forEach(t=>t.life-=0.065);
+}
 function releaseAllMobileControls(){
   ['a','d','ArrowLeft','ArrowRight',' ','ArrowUp'].forEach(k=>keys[k]=false);
   const slot=mobilePrimarySlot();
@@ -1219,6 +1277,12 @@ function applySecretCode(){
     return;
   }
   setSecretMessage('Invalid code.',true);
+}
+function clearSecretCode(){
+  activeSecretCode='';
+  oracleUnlocked=false;
+  mirageUnlocked=false;
+  updateSecretPanelStatus();
 }
 function runSecretUnlockFx(){
   const logo=document.getElementById('menu-logo');
@@ -1661,9 +1725,10 @@ function fbListenState(){
         updateHUD();showLocalStats(d.win);
       }
       if(d.type==='mirage'){
-        if(typeof d.target==='number'&&mySlot===d.target){
-          mirageUntil[mySlot]=Date.now()+Math.max(1000,Math.min(12000,d.dur||7000));
-        }
+        const dur=Math.max(1000,Math.min(12000,d.dur||7000));
+        mirageUntil[0]=Date.now()+dur;
+        mirageUntil[2]=Date.now()+dur;
+        if(mySlot===0||mySlot===2)setHm(`MIRAGE active: fake balls for ${(dur/1000).toFixed(1)}s`);
       }
     });
     fbListeners.push(()=>evtRef.off('value',off2));
@@ -1699,7 +1764,7 @@ function applyGuestAction(a){
   if(a.type==='mirage'&&phase==='playing'&&mirageUnlocked&&!mirageUsedBySlot[2]){
     const dur=7000;
     applyMirageEffect(2,dur);
-    fbPushEvent({type:'mirage',target:0,dur});
+    fbPushEvent({type:'mirage',dur});
   }
   if(a.type==='serve'&&phase==='waiting'&&serving===2){
     phase='playing';hideOv();setHm('');
@@ -1773,9 +1838,10 @@ function activateOracleWeb(){
 
 function applyMirageEffect(casterSlot,durMs=7000){
   const targetSlot=slotSide(casterSlot)===0?2:0;
-  mirageUntil[targetSlot]=Date.now()+durMs;
+  mirageUntil[0]=Date.now()+durMs;
+  mirageUntil[2]=Date.now()+durMs;
   mirageUsedBySlot[casterSlot]=true;
-  if(targetSlot===mySlot)setHm(`MIRAGE active: fake balls for ${(durMs/1000).toFixed(1)}s`);
+  if(targetSlot===mySlot||casterSlot===mySlot)setHm(`MIRAGE active: fake balls for ${(durMs/1000).toFixed(1)}s`);
 }
 
 function activateMirage(){
@@ -1787,7 +1853,7 @@ function activateMirage(){
   const dur=7000;
   if(mySlot===0){
     applyMirageEffect(0,dur);
-    fbPushEvent({type:'mirage',target:2,dur});
+    fbPushEvent({type:'mirage',dur});
   }else{
     fbSendAction({type:'mirage'});
   }
@@ -1880,9 +1946,7 @@ function physTick(){
     if(mySlot===0){
       if(PL[2])gravTick(PL[2],2);
       if(phase==='playing'){
-        ballTrail.push({x:ball.x,y:ball.y,life:1});
-        if(ballTrail.length>20)ballTrail.shift();
-        ballTrail.forEach(t=>t.life-=0.065);
+        pushBallTrail();
         ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
         ball.spin+=ball.vx*.05;ball.vx*=.996;
         if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
@@ -1923,9 +1987,7 @@ function physTick(){
         }
         if(ball.y+BR>H-FP)ball.y=H-FP-BR;
       }
-      ballTrail.push({x:ball.x,y:ball.y,life:1});
-      if(ballTrail.length>20)ballTrail.shift();
-      ballTrail.forEach(t=>t.life-=0.065);
+      pushBallTrail();
     }
     return;
   }
@@ -1961,9 +2023,7 @@ function physTick(){
     ballTrail=[];
     return;
   }
-  ballTrail.push({x:ball.x,y:ball.y,life:1});
-  if(ballTrail.length>20)ballTrail.shift();
-  ballTrail.forEach(t=>t.life-=0.065);
+  pushBallTrail();
   ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
   ball.spin+=ball.vx*.05;ball.vx*=.996;
   if(ball.x-BR<0){ball.x=BR;ball.vx=Math.abs(ball.vx)*.75;}
@@ -2360,45 +2420,59 @@ function showBrainStatus(){
 }
 */
 function botTargetX(ai,pred,hx,hn,onSide){
-  const backLine=slotMaxX(2)-PW-18;
-  const midCourt=nx()+W*0.19;
-  const attackLane=hx<nx()*0.5?nx()+W*0.28:nx()+W*0.10;
-  const err=(Math.random()-.5)*DIFF[diff].err*botErrorScale();
-  if(!onSide)return Math.max(nx()+24,Math.min(backLine,attackLane+err));
-  if(hn===0)return Math.max(nx()+26,Math.min(backLine,pred.x-PW/2+err));
-  if(hn===1){
-    const setAnchor=Math.max(nx()+46,Math.min(backLine,midCourt+err*0.3));
-    return ball.y<nt()+65?Math.max(nx()+34,Math.min(backLine,ball.x-PW/2+err*0.25)):setAnchor;
+  const backLine=slotMaxX(2)-PW-16;
+  const center=nx()+W*0.18;
+  const nearNet=nx()+58;
+  const humanBias=hx<nx()*0.5?nx()+W*0.30:nx()+W*0.09;
+  const err=(Math.random()-.5)*DIFF[diff].err*botErrorScale()*(hn===0?1:0.5);
+  const landing=Math.max(nearNet,Math.min(backLine,pred.x-PW/2));
+  const defend=Math.max(nearNet,Math.min(backLine,center+(humanBias-center)*0.35));
+
+  if(!onSide){
+    // Re-center quickly after sending the ball over.
+    return Math.max(nearNet,Math.min(backLine,defend+err));
   }
-  const finishX=Math.max(nx()+34,Math.min(backLine,pred.x-PW/2+err*0.2));
-  return ball.y<fl()-120?finishX:Math.max(nx()+44,Math.min(backLine,midCourt+err*0.2));
+  if(hn===0){
+    // First touch: prioritize getting behind the projected landing point.
+    return Math.max(nearNet,Math.min(backLine,landing+err));
+  }
+  if(hn===1){
+    // Second touch: set from a stable central lane unless ball is very low.
+    if(ball.y>fl()-92)return Math.max(nearNet,Math.min(backLine,landing+err*0.35));
+    return Math.max(nearNet,Math.min(backLine,center+err*0.4));
+  }
+  // Third touch: step into attack lane closer to predicted ball.
+  return Math.max(nearNet,Math.min(backLine,landing*0.72+humanBias*0.28+err*0.3));
 }
 function botShouldJump(ai,hn,onSide,dist){
   if(!ai.onGround||!onSide)return false;
-  if(hn>=2)return ball.y<fl()-DIFF[diff].jt&&ball.y>nt()+36&&dist<132;
-  if(hn===1)return ball.y<fl()-DIFF[diff].jt*0.72&&ball.y>nt()+22&&dist<88;
-  return diff==='hard'&&ball.y<fl()-DIFF[diff].jt*0.45&&dist<52;
+  const incoming=ball.vx>0||Math.abs(ball.vx)<2;
+  if(hn>=2)return incoming&&ball.y<fl()-DIFF[diff].jt&&ball.y>nt()+30&&dist<138;
+  if(hn===1)return ball.y<fl()-DIFF[diff].jt*0.74&&ball.y>nt()+20&&dist<92;
+  return diff!=='easy'&&ball.y<fl()-DIFF[diff].jt*0.48&&dist<58;
 }
 function chooseBotSkill(hn,ai,hx){
   const player=PL[0];
   const px=player?player.x+PW/2:nx()*0.25;
   const playerNearNet=px>nx()-95;
-  const playerDeep=px<nx()*0.34;
+  const playerDeep=px<nx()*0.33;
   const ballHigh=ball.y<fl()-135;
-  const ballNearNet=ball.x<nx()+78;
+  const ballNearNet=ball.x<nx()+82;
   if(hn===0)return ballHigh&&diff!=='easy'?'set':'bump';
   if(hn===1){
-    if(isAirborne(ai)&&ballNearNet)return playerNearNet?'tip':'spike';
+    if(isAirborne(ai)&&ballNearNet)return playerNearNet&&!playerDeep?'tip':'spike';
     return 'set';
   }
-  if(!isAirborne(ai))return playerNearNet&&!playerDeep?'tip':'bump';
+  if(!isAirborne(ai))return playerNearNet&&!playerDeep&&diff!=='easy'?'tip':'bump';
   if(playerNearNet&&ballNearNet)return 'tip';
-  if(diff==='easy'&&Math.random()<0.4)return 'tip';
+  if(diff==='easy'&&Math.random()<0.35)return 'tip';
   return 'spike';
 }
 function botAttackNudge(skill,hx){
   const playerLeft=hx<nx()*0.5;
-  const targetX=playerLeft?nx()-NW/2-BR-28:30;
+  const deepCorner=playerLeft?nx()-NW/2-BR-36:24;
+  const midLane=playerLeft?nx()-NW/2-72:66;
+  const targetX=(diff==='hard'&&Math.random()<0.55)?deepCorner:midLane;
   if(skill==='tip'){
     const soft=diff==='hard'?1.3:diff==='med'?0.9:0.5;
     ball.vx+=Math.sign(targetX-ball.x)*soft;
@@ -2432,9 +2506,14 @@ function aiTick(){
   }
 
   let tx=botTargetX(ai,pred,hx,hn,onSide);
+  if(onSide&&hn===0&&ball.y<fl()-130&&Math.abs(ball.vx)>3){
+    // Fast high balls: bias ahead of trajectory for cleaner first contact.
+    tx+=(ball.vx>0?14:-8);
+  }
   tx=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,tx));
   const dx=tx-ai.x;
-  if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(cfg.spd,Math.abs(dx));
+  const moveSpd=cfg.spd*(diff==='hard'?1.04:1);
+  if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(moveSpd,Math.abs(dx));
 
   if(ai.onGround&&onSide){
     const dist=Math.abs(ball.x-aiCx);
@@ -2444,7 +2523,7 @@ function aiTick(){
 
   if(aiCool>0){aiCool--;return;}
   if(!onSide||sideHits[1]>=3)return;
-  if(Math.random()>cfg.sc)return;
+  if(Math.random()>(cfg.sc+(diff==='hard'?0.05:0)))return;
   if(!inRangeForSkill(2,'bump'))return;
 
   const captHn=sideHits[1];
@@ -2452,7 +2531,7 @@ function aiTick(){
   if(skill==='spike'&&!isAirborne(ai)){aiCool=5;return;}
 
   const captSkill=skill;
-  const delay=cfg.ms+Math.random()*18;
+  const delay=cfg.ms+Math.random()*(diff==='hard'?12:18);
   setTimeout(()=>{
     if(phase!=='playing'||sideHits[1]!==captHn||ball.x<=nx())return;
     if(!inRangeForSkill(2,captSkill))return;
@@ -2785,8 +2864,9 @@ function drawBall(){
 
 function drawMirageBalls(){
   if(gmode!=='online')return;
-  if(mySlot!==0&&mySlot!==2)return;
-  if(!isMirageAffected(mySlot))return;
+  const mySideSlot=(mySlot===0||mySlot===2)?mySlot:null;
+  const hostMirage=isMirageAffected(0)||isMirageAffected(2);
+  if(!hostMirage&&!(mySideSlot!==null&&isMirageAffected(mySideSlot)))return;
   const t=Date.now()*0.005;
   const ox1=18*Math.sin(t*1.4),oy1=8*Math.cos(t*1.9);
   const ox2=-16*Math.cos(t*1.2),oy2=10*Math.sin(t*1.6);
@@ -2820,7 +2900,9 @@ function loop(ts){
 }
 
 resize();
+loadSettings();
 updateAccountUI();
+updateSettingsUI();
 updateSecretPanelStatus();
 const menuLogo=document.getElementById('menu-logo');
 if(menuLogo){
