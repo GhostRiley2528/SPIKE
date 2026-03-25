@@ -73,6 +73,17 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .acct-actions{display:flex;gap:8px;margin-top:10px}
 .acct-btn{flex:1;padding:8px 10px;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.08em;border:1px solid #ffffff28;border-radius:8px;background:#ffffff10;color:#fff;cursor:pointer}
 .acct-btn.primary{border-color:var(--gr);color:var(--gr);box-shadow:0 0 12px #00ff8833}
+.secret-card{display:none;position:relative;z-index:3;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:10px 12px;margin:.7rem auto 0;width:min(460px,92vw);backdrop-filter:blur(8px)}
+.secret-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.secret-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.08em;color:var(--pk);text-shadow:0 0 10px #ff2d7850}
+.secret-toggle{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.08em;border:1px solid #ffffff33;border-radius:6px;background:#ffffff12;color:#fff;padding:4px 10px;cursor:pointer}
+.secret-body{display:none;margin-top:8px}
+.secret-card.open .secret-body{display:block}
+.secret-row{display:flex;gap:8px;align-items:center}
+.secret-input{flex:1;padding:8px 10px;background:#ffffff11;border:1.5px solid #ffffff33;border-radius:6px;color:#fff;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.18em;text-transform:uppercase;outline:none}
+.secret-input:focus{border-color:var(--pk);box-shadow:0 0 10px #ff2d7840}
+.secret-apply{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.08em;padding:8px 14px;border:1.5px solid var(--pk);border-radius:6px;background:#ff2d7818;color:var(--pk);cursor:pointer}
+.secret-msg{min-height:16px;margin-top:6px;font-size:11px;letter-spacing:.05em;color:#fff8}
 .auth-box,.board-box{background:#ffffff0a;border:1px solid #ffffff22;border-radius:14px;padding:1.6rem 1.5rem;width:min(480px,92vw);backdrop-filter:blur(8px)}
 .auth-box h2,.board-box h2{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.08em;color:var(--ye);margin-bottom:1rem;text-align:center;text-shadow:0 0 12px var(--ye)}
 .auth-grid{display:grid;gap:10px}
@@ -206,6 +217,8 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
   .menu-btns{grid-template-columns:1fr}
   .mbtn{width:100%}
   .acct-actions{flex-direction:column}
+  .secret-row{flex-direction:column}
+  .secret-input,.secret-apply{width:100%}
   .ctrl-row-outer{grid-template-columns:1fr 1fr;gap:6px;padding:0 2px}
   .cc{padding:7px 9px}
   .cc p{font-size:9px}
@@ -262,6 +275,19 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       <button class="acct-btn primary" onclick="showAuthScreen()" id="acct-auth-btn">Sign Up / Login</button>
       <button class="acct-btn" onclick="showLeaderboardScreen()">Leaderboard</button>
       <button class="acct-btn" onclick="logoutAccount()" id="acct-logout-btn" style="display:none">Logout</button>
+    </div>
+  </div>
+  <div class="secret-card" id="secret-card">
+    <div class="secret-head">
+      <div class="secret-title">Secret Code</div>
+      <button class="secret-toggle" type="button" onclick="toggleSecretPanel()">Open</button>
+    </div>
+    <div class="secret-body">
+      <div class="secret-row">
+        <input id="secret-input" class="secret-input" maxlength="24" placeholder="ENTER CODE" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_-]/g,'')" onkeydown="if(event.key==='Enter')applySecretCode()"/>
+        <button class="secret-apply" type="button" onclick="applySecretCode()">Apply</button>
+      </div>
+      <div class="secret-msg" id="secret-msg">No active codes configured yet.</div>
     </div>
   </div>
   <div class="ctrl-row-outer">
@@ -520,6 +546,9 @@ let charge=[null,null,null,null];
 let blockingSlots=new Set();
 let ballTrail=[];
 let localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
+let oracleUnlocked=false,oracleUsedThisMatch=false;
+let webTrapUntil=[0,0,0,0];
+try{oracleUnlocked=localStorage.getItem('spike.secret.oracle_m4')==='1';}catch(e){}
 
 const SCOL=[['#00d4ff','#006888'],['#00ff88','#008844'],['#ff6b3d','#882200'],['#a78bfa','#442288']];
 const SEMOJI=['🔵','🟢','🟠','🟣'];
@@ -536,6 +565,7 @@ function inRangeForSkill(slot,skill){
   return Math.sqrt((ball.x-p.x-PW/2)**2+(ball.y-p.y)**2)<r;
 }
 function inRange(slot){return inRangeForSkill(slot,'bump');}
+function isWebTrapped(slot){return Date.now()<(webTrapUntil[slot]||0);}
 
 let spikeHeld=[false,false,false,false];
 let spikeFired=[false,false,false,false];
@@ -564,6 +594,7 @@ function spikeTargetFor(slot){
 // ── POWER METER ───────────────────────────────────────────────────────────
 function startCharge(slot,skill){
   if(phase!=='playing')return;
+  if(isWebTrapped(slot)){flashWrong(slot,skill);return;}
   if(charge[slot])return;
   const side=slotSide(slot);
   if(sideHits[side]>=3){flashWrong(slot,skill);return;}
@@ -898,6 +929,7 @@ document.addEventListener('keydown',e=>{
   if(phase!=='playing')return;
   const k=e.key.toLowerCase();
   if(localSlots().includes(0)){
+    if(k==='y')activateOracleWeb();
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
@@ -965,6 +997,7 @@ function sendKeys(){
 // ── LOCAL HIT ─────────────────────────────────────────────────────────────
 function doHitLocal(slot,pwr,skill){
   if(phase!=='playing')return;
+  if(isWebTrapped(slot)){flashWrong(slot,skill);return;}
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
 
@@ -1102,6 +1135,7 @@ function showOnlyScreen(id){
 function showMenuScreen(){
   if(fbRoom)fbOff();
   showOnlyScreen('screen-menu');
+  updateSecretPanelStatus();
   updateMobileUI();
 }
 function showAuthScreen(){
@@ -1112,6 +1146,36 @@ function showAuthScreen(){
 function showLeaderboardScreen(){
   showOnlyScreen('screen-board');
   refreshLeaderboard();
+}
+function toggleSecretPanel(){
+  const card=document.getElementById('secret-card');
+  if(!card)return;
+  card.classList.toggle('open');
+  const btn=card.querySelector('.secret-toggle');
+  if(btn)btn.textContent=card.classList.contains('open')?'Close':'Open';
+}
+function setSecretMessage(msg,isErr=false){
+  const el=document.getElementById('secret-msg');
+  if(!el)return;
+  el.textContent=msg||'';
+  el.style.color=isErr?'#ff6b6b':'#fff8';
+}
+function updateSecretPanelStatus(){
+  setSecretMessage(oracleUnlocked?'ORACLE_M4 unlocked. Press Y in-match (once).':'No active codes configured yet.');
+}
+function applySecretCode(){
+  const input=document.getElementById('secret-input');
+  if(!input)return;
+  const code=(input.value||'').trim().toUpperCase();
+  if(!code){setSecretMessage('Enter a code first.',true);return;}
+  if(code==='ORACLE_M4'){
+    oracleUnlocked=true;
+    try{localStorage.setItem('spike.secret.oracle_m4','1');}catch(e){}
+    input.value='';
+    updateSecretPanelStatus();
+    return;
+  }
+  setSecretMessage('Invalid code.',true);
 }
 function switchAuthTab(mode){
   authMode=mode;
@@ -1588,6 +1652,25 @@ function clearTransientMatchState(){
   aiCool=0;
   parts=[];
   ballTrail=[];
+  webTrapUntil=[0,0,0,0];
+}
+
+function activateOracleWeb(){
+  if(!oracleUnlocked){setHm('ORACLE_M4 is locked. Use secret code first.');return;}
+  if(phase!=='playing'){setHm('ORACLE web can only be used during a rally.');return;}
+  if(gmode==='online'){setHm('ORACLE web is available in local and vs BOT modes.');return;}
+  if(!localSlots().includes(0)){return;}
+  if(oracleUsedThisMatch){setHm('ORACLE web already used this match.');return;}
+  const targetSlot=2,target=PL[targetSlot];
+  if(!target)return;
+  const dur=4000+Math.random()*1000;
+  webTrapUntil[targetSlot]=Date.now()+dur;
+  oracleUsedThisMatch=true;
+  if(charge[targetSlot]){charge[targetSlot]=null;clearPbar(targetSlot);}
+  blockingSlots.delete(targetSlot);
+  spawnParts(target.x+PW/2,target.y+PH*0.45,'#d8e1f2',26);
+  doFlash('ORACLE WEB','#d8e1f2',720,true);
+  setHm(`ORACLE WEB active for ${(dur/1000).toFixed(1)}s (used).`);
 }
 
 function doRematch(){
@@ -1729,6 +1812,15 @@ function physTick(){
   // ── Local / AI game ──────────────────────────────────────────────────
   PL.forEach((p,slot)=>{
     if(!p)return;
+    if(isWebTrapped(slot)){
+      if(gmode==='ai'&&slot===2){
+        aiState.blocking=false;
+        blockingSlots.delete(2);
+      }
+      charge[slot]=null;
+      gravTick(p,slot);
+      return;
+    }
     if(gmode==='ai'&&slot===2){aiTick();return;}
     if(!localSlots().includes(slot))return;
     const lk=slot<2?'a':'ArrowLeft',rk=slot<2?'d':'ArrowRight',jk=slot<2?' ':'ArrowUp';
@@ -2317,6 +2409,8 @@ function resetPositions(){
 function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
   clearTransientMatchState();
+  oracleUsedThisMatch=false;
+  webTrapUntil=[0,0,0,0];
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
   localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
@@ -2421,6 +2515,7 @@ function draw(){
   });
 
   PL.forEach((p,i)=>{if(p)drawPlayer(p,SCOL[i][0],SCOL[i][1]);});
+  PL.forEach((p,i)=>{if(p&&isWebTrapped(i))drawWebTrap(p);});
   drawBall();drawParts();
 
   if(phase==='playing'){
@@ -2518,6 +2613,36 @@ function drawPlayer(p,col,dark){
   cx.fillStyle='#111';cx.beginPath();cx.arc(c-3,top+9,1.5,0,Math.PI*2);cx.fill();cx.beginPath();cx.arc(c+3,top+9,1.5,0,Math.PI*2);cx.fill();
 }
 
+function drawWebTrap(p){
+  const c=p.x+PW/2,top=p.y;
+  const w=44,h=58;
+  cx.save();
+  cx.translate(c,top+PH*0.5);
+  cx.strokeStyle='#d8e1f2';
+  cx.shadowColor='#d8e1f2';
+  cx.shadowBlur=12;
+  cx.globalAlpha=0.86;
+  cx.lineWidth=1.3;
+  cx.beginPath();
+  cx.ellipse(0,0,w*0.52,h*0.5,0,0,Math.PI*2);
+  cx.stroke();
+  for(let i=-3;i<=3;i++){
+    const x=(i/3)*(w*0.48);
+    cx.beginPath();cx.moveTo(x,-h*0.46);cx.lineTo(x,h*0.46);cx.stroke();
+  }
+  for(let j=-2;j<=2;j++){
+    const y=(j/2)*(h*0.45);
+    cx.beginPath();cx.moveTo(-w*0.5,y);cx.lineTo(w*0.5,y);cx.stroke();
+  }
+  cx.beginPath();
+  cx.moveTo(-w*0.5,-h*0.45);cx.lineTo(-w*0.7,-h*0.7);
+  cx.moveTo(w*0.5,-h*0.45);cx.lineTo(w*0.7,-h*0.7);
+  cx.moveTo(-w*0.5,h*0.45);cx.lineTo(-w*0.7,h*0.7);
+  cx.moveTo(w*0.5,h*0.45);cx.lineTo(w*0.7,h*0.7);
+  cx.stroke();
+  cx.restore();
+}
+
 function drawBall(){
   cx.save();cx.translate(ball.x,ball.y);cx.rotate(ball.spin);
   const spd2=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
@@ -2548,6 +2673,7 @@ function loop(ts){
 
 resize();
 updateAccountUI();
+updateSecretPanelStatus();
 switchAuthTab('signup');
 fbInit();
 </script>
