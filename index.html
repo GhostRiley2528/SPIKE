@@ -622,6 +622,9 @@ let mirageUnlocked=false;
 let mirageUsedBySlot=[false,false,false,false];
 let mirageUntil=[0,0,0,0];
 let activeSecretCode='';
+let akaashiUnlocked=false;
+let timeStopUntil=0,timeStopTarget=-1,timeStopCaster=-1;
+let pendingTimeStopHit=null,timeStopWasActive=false;
 let secretPanelGateOpen=false,logoTapCount=0,lastLogoTapAt=0,logoTapWindowStart=0;
 
 const SCOL=[['#00d4ff','#006888'],['#00ff88','#008844'],['#ff6b3d','#882200'],['#a78bfa','#442288']];
@@ -641,6 +644,16 @@ function inRangeForSkill(slot,skill){
 function inRange(slot){return inRangeForSkill(slot,'bump');}
 function isWebTrapped(slot){return Date.now()<(webTrapUntil[slot]||0);}
 function isMirageAffected(slot){return Date.now()<(mirageUntil[slot]||0);}
+function hasAkaashiCode(){return activeSecretCode==='AKAASHI93';}
+function slotOwnedByUser(slot){
+  if(gmode==='online')return slot===mySlot;
+  return slot===0;
+}
+function hasAkaashiBuff(slot){return hasAkaashiCode()&&slotOwnedByUser(slot);}
+function moveSpeedFor(slot){return PS*(hasAkaashiBuff(slot)?1.45:1);}
+function blockRangeFor(slot){return hasAkaashiBuff(slot)?BLOCK_R*1.35:BLOCK_R;}
+function isTimeStopActive(){return Date.now()<timeStopUntil;}
+function isTimeStoppedSlot(slot){return isTimeStopActive()&&slot===timeStopTarget;}
 
 let spikeHeld=[false,false,false,false];
 let spikeFired=[false,false,false,false];
@@ -1011,12 +1024,13 @@ document.addEventListener('keydown',e=>{
   if(phase!=='playing')return;
   const k=e.key.toLowerCase();
   if(localSlots().includes(0)){
-    if(k==='y')activateOracleWeb();
+    if(k==='y')activateAkaashiY(0);
     if(k==='u')activateMirage(0);
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
   if(localSlots().includes(2)){
+    if(k==='y')activateAkaashiY(2);
     if(k==='u')activateMirage(2);
     if(gmode==='online'){
       if(k==='e')startCharge(2,'bump');if(k==='q')startCharge(2,'set');
@@ -1090,17 +1104,22 @@ function setKeyState(key,isDown){
 }
 
 function clearAllKeys(){
-  clearAllKeys();
+  keys={};
 }
 
 // ── LOCAL HIT ─────────────────────────────────────────────────────────────
-function doHitLocal(slot,pwr,skill){
+function doHitLocal(slot,pwr,skill,force=false){
   if(phase!=='playing')return;
+  if(isTimeStopActive()&&(slotOwnedByUser(slot)||slot===timeStopCaster)&&!force){
+    pendingTimeStopHit={slot,pwr,skill};
+    setHm('HIT STORED: will fire when TIMESTOP ends.');
+    return;
+  }
   if(isWebTrapped(slot)){flashWrong(slot,skill);return;}
   const p=PL[slot];if(!p)return;
   const side=slotSide(slot);
 
-  if(!(gmode==='online'&&mySlot!==0)){
+  if(!force&&!(gmode==='online'&&mySlot!==0)){
     if(skill==='spike'){
       if(spikeCool[slot]>0){flashWrong(slot,'spike');return;}
       if(!inRangeForSkill(slot,'spike')){flashWrong(slot,'spike');return;}
@@ -1115,7 +1134,7 @@ function doHitLocal(slot,pwr,skill){
 
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
   const spM=Math.min(1.4,1+rallyHits*0.035);
-  const pr=Math.max(0.3,Math.min(1,pwr));
+  const pr=hasAkaashiBuff(slot)?1:Math.max(0.3,Math.min(1,pwr));
   const cxp=p.x+PW/2,cyp=p.y;
   const ddx=ball.x-cxp,ddy=ball.y-cyp;
   const dl=Math.max(1,Math.sqrt(ddx*ddx+ddy*ddy));
@@ -1167,11 +1186,12 @@ function checkLocalBlocks(){
     const p=PL[slot];if(!p||!blockingSlots.has(slot)||p.onGround)return;
     const side=slotSide(slot);
     const cx2=p.x+PW/2,cy2=p.y;
+    const br=blockRangeFor(slot);
     const dist=Math.sqrt((ball.x-cx2)**2+(ball.y-cy2)**2);
-    if(dist<BLOCK_R){
+    if(dist<br){
       ball.vx*=-0.9;ball.vy=Math.min(ball.vy,-4);
-      ball.x=cx2+(ball.x-cx2)/dist*(BLOCK_R+1);
-      ball.y=cy2+(ball.y-cy2)/dist*(BLOCK_R+1);
+      ball.x=cx2+(ball.x-cx2)/dist*(br+1);
+      ball.y=cy2+(ball.y-cy2)/dist*(br+1);
       sndBlock();shake(6,8);
       const sf=document.getElementById('sflash');sf.classList.add('block');setTimeout(()=>sf.classList.remove('block'),100);
       doFlash('BLOCK!','#00ff88');spawnParts(ball.x,ball.y,'#00ff88',16);
@@ -1267,7 +1287,11 @@ function updateSecretPanelStatus(){
     setSecretMessage('Access locked. Tap SPIKE! 5 times quickly.',true);
     return;
   }
-  if(activeSecretCode){setSecretMessage(`Active code: ${activeSecretCode}`);return;}
+  if(activeSecretCode){
+    if(activeSecretCode==='AKAASHI93')setSecretMessage('Active code: AKAASHI93 (MAX buffs + random Y abilities)');
+    else setSecretMessage(`Active code: ${activeSecretCode}`);
+    return;
+  }
   setSecretMessage('No active codes configured yet.');
 }
 function applySecretCode(){
@@ -1280,6 +1304,8 @@ function applySecretCode(){
     activeSecretCode='ORACLE_M4';
     oracleUnlocked=true;
     mirageUnlocked=false;
+    akaashiUnlocked=false;
+    timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
     input.value='';
     updateSecretPanelStatus();
     return;
@@ -1288,6 +1314,17 @@ function applySecretCode(){
     activeSecretCode='MIRAGE_83';
     mirageUnlocked=true;
     oracleUnlocked=false;
+    akaashiUnlocked=false;
+    timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
+    input.value='';
+    updateSecretPanelStatus();
+    return;
+  }
+  if(code==='AKAASHI93'){
+    activeSecretCode='AKAASHI93';
+    akaashiUnlocked=true;
+    oracleUnlocked=true;
+    mirageUnlocked=true;
     input.value='';
     updateSecretPanelStatus();
     return;
@@ -1298,6 +1335,8 @@ function clearSecretCode(){
   activeSecretCode='';
   oracleUnlocked=false;
   mirageUnlocked=false;
+  akaashiUnlocked=false;
+  timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
   updateSecretPanelStatus();
 }
 function runSecretUnlockFx(){
@@ -1746,6 +1785,23 @@ function fbListenState(){
         mirageUntil[2]=Date.now()+dur;
         if(mySlot===0||mySlot===2)setHm(`MIRAGE active: fake balls for ${(dur/1000).toFixed(1)}s`);
       }
+      if(d.type==='oracle'){
+        const target=typeof d.target==='number'?d.target:-1;
+        const dur=Math.max(1000,Math.min(12000,d.dur||4500));
+        if(target>=0&&target<4){
+          webTrapUntil[target]=Date.now()+dur;
+          if(mySlot===target)setHm(`ORACLE WEB on you for ${(dur/1000).toFixed(1)}s`);
+        }
+      }
+      if(d.type==='timestop'){
+        const target=typeof d.target==='number'?d.target:-1;
+        const dur=Math.max(500,Math.min(5000,d.dur||2300));
+        if(target>=0&&target<4){
+          timeStopTarget=target;
+          timeStopUntil=Date.now()+dur;
+          if(typeof d.caster==='number')timeStopCaster=d.caster;
+        }
+      }
     });
     fbListeners.push(()=>evtRef.off('value',off2));
   }
@@ -1767,7 +1823,10 @@ function applyGuestAction(a){
   const p=PL[2];if(!p)return;
   if(a.type==='keys'){
     // FIX: Allow movement during 'waiting' phase so guest can position before serve
-    if(a.left)p.x-=PS;else if(a.right)p.x+=PS;
+    const guestSpd=moveSpeedFor(2);
+    if(!isTimeStoppedSlot(2)&&!isWebTrapped(2)){
+      if(a.left)p.x-=guestSpd;else if(a.right)p.x+=guestSpd;
+    }
     // FIX: Allow jumping during 'waiting' phase too
     if(a.jump&&p.onGround){p.vy=JV;p.onGround=false;spikeFired[2]=false;}
     // FIX: Also check for mid-air spike while jump key held (in case timing is off)
@@ -1775,6 +1834,9 @@ function applyGuestAction(a){
     // Clamp position
     p.x=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,p.x));
   }
+  if(a.type==='aka_y'&&phase==='playing')activateAkaashiY(2,true);
+  if(a.type==='oracle'&&phase==='playing'&&!oracleUsedThisMatch)activateOracleWeb(2,true);
+  if(a.type==='timestop'&&phase==='playing')activateTimeStop(2,true);
   if(a.type==='spike'&&phase==='playing'&&!p.onGround)doHitLocal(2,0.9,'spike');
   if(a.type==='skill'&&phase==='playing')doHitLocal(2,a.pwr,a.skill);
   if(a.type==='mirage'&&phase==='playing'&&!mirageUsedBySlot[2]){
@@ -1832,15 +1894,22 @@ function clearTransientMatchState(){
   ballTrail=[];
   webTrapUntil=[0,0,0,0];
   mirageUntil=[0,0,0,0];
+  timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
+  pendingTimeStopHit=null;timeStopWasActive=false;
 }
 
-function activateOracleWeb(){
+function activateOracleWeb(casterSlot=0,authoritative=false){
   if(!oracleUnlocked){setHm('ORACLE_M4 is locked. Use secret code first.');return;}
   if(phase!=='playing'){setHm('ORACLE web can only be used during a rally.');return;}
-  if(gmode==='online'){setHm('ORACLE web is available in local and vs BOT modes.');return;}
-  if(!localSlots().includes(0)){return;}
+  if(gmode==='online'){
+    if(casterSlot!==mySlot&&!authoritative)return;
+    if(!authoritative&&mySlot!==0){fbSendAction({type:'oracle'});return;}
+  } else if(!slotOwnedByUser(casterSlot)){
+    return;
+  }
   if(oracleUsedThisMatch){setHm('ORACLE web already used this match.');return;}
-  const targetSlot=2,target=PL[targetSlot];
+  const targetSlot=slotSide(casterSlot)===0?2:0;
+  const target=PL[targetSlot];
   if(!target)return;
   const dur=4000+Math.random()*1000;
   webTrapUntil[targetSlot]=Date.now()+dur;
@@ -1850,6 +1919,9 @@ function activateOracleWeb(){
   spawnParts(target.x+PW/2,target.y+PH*0.45,'#d8e1f2',26);
   doFlash('ORACLE WEB','#d8e1f2',720,true);
   setHm(`ORACLE WEB active for ${(dur/1000).toFixed(1)}s (used).`);
+  if(gmode==='online'&&mySlot===0){
+    fbPushEvent({type:'oracle',target:targetSlot,dur:Math.round(dur)});
+  }
 }
 
 function applyMirageEffect(casterSlot,durMs=7000){
@@ -1879,6 +1951,36 @@ function activateMirage(casterSlot=0){
     applyMirageEffect(casterSlot,dur);
   }
   doFlash('MIRAGE','#7ce7ff',620,true);
+}
+
+function activateTimeStop(casterSlot=0,authoritative=false){
+  if(phase!=='playing'){setHm('TIMESTOP can only be used during a rally.');return;}
+  if(gmode==='online'){
+    if(casterSlot!==mySlot&&!authoritative)return;
+    if(!authoritative&&mySlot!==0){fbSendAction({type:'timestop'});return;}
+  } else if(!slotOwnedByUser(casterSlot))return;
+  const target=slotSide(casterSlot)===0?2:0;
+  if(!PL[target])return;
+  timeStopCaster=casterSlot;
+  timeStopTarget=target;
+  timeStopUntil=Date.now()+2300;
+  doFlash('TIME STOP','#9dd6ff',760,true);
+  setHm('TIMESTOP active (2.3s)');
+  if(gmode==='online'&&mySlot===0){
+    fbPushEvent({type:'timestop',target,dur:2300,caster:casterSlot});
+  }
+}
+
+function activateAkaashiY(casterSlot=0,authoritative=false){
+  if(!hasAkaashiCode()){activateOracleWeb(casterSlot,authoritative);return;}
+  const pool=[];
+  pool.push('oracle');
+  pool.push('mirage');
+  pool.push('timestop');
+  const pick=pool[Math.floor(Math.random()*pool.length)];
+  if(pick==='oracle')activateOracleWeb(casterSlot,authoritative);
+  else if(pick==='mirage')activateMirage(casterSlot);
+  else activateTimeStop(casterSlot,authoritative);
 }
 
 function doRematch(){
@@ -1936,14 +2038,23 @@ function serveLocal(){
 function physTick(){
   spikeCool=spikeCool.map(v=>Math.max(0,v-1));
   spikeGrace=spikeGrace.map(v=>Math.max(0,v-1));
+  const tsActive=isTimeStopActive();
+  if(!tsActive&&timeStopWasActive&&pendingTimeStopHit){
+    const h=pendingTimeStopHit;pendingTimeStopHit=null;
+    doHitLocal(h.slot,h.pwr,h.skill,true);
+  }
+  timeStopWasActive=tsActive;
 
   if(gmode==='online'){
     const myP=PL[mySlot];
     if(myP){
       // FIX: Allow movement during 'waiting' phase so guest/host can move before serve
       if(phase==='playing'||phase==='waiting'){
-        if(keys['a']||keys['ArrowLeft'])myP.x-=PS;
-        else if(keys['d']||keys['ArrowRight'])myP.x+=PS;
+        const mySpd=moveSpeedFor(mySlot);
+        if(!isTimeStoppedSlot(mySlot)&&!isWebTrapped(mySlot)){
+          if(keys['a']||keys['ArrowLeft'])myP.x-=mySpd;
+          else if(keys['d']||keys['ArrowRight'])myP.x+=mySpd;
+        }
         if((keys[' ']||keys['ArrowUp'])&&myP.onGround){
           myP.vy=JV;myP.onGround=false;spikeFired[mySlot]=false;
           // FIX: Spike on jump — only trigger if game is playing
@@ -1958,15 +2069,20 @@ function physTick(){
           if(mySlot!==0)fbSendAction({type:'spike'});
         }
       }
-      gravTick(myP,mySlot);
+      if(!isTimeStoppedSlot(mySlot))gravTick(myP,mySlot);
     }
 
     // ── Guest: also send key state every frame ────────────────────────
     if(mySlot!==0)sendKeys();
 
     if(mySlot===0){
-      if(PL[2])gravTick(PL[2],2);
+      if(PL[2]&&!isTimeStoppedSlot(2))gravTick(PL[2],2);
       if(phase==='playing'){
+        if(tsActive){
+          pushBallTrail();
+          fbPushState();
+          return;
+        }
         pushBallTrail();
         ball.vy+=G;ball.x+=ball.vx;ball.y+=ball.vy;
         ball.spin+=ball.vx*.05;ball.vx*=.996;
@@ -2025,10 +2141,12 @@ function physTick(){
       gravTick(p,slot);
       return;
     }
+    if(isTimeStoppedSlot(slot)){return;}
     if(gmode==='ai'&&slot===2){aiTick();return;}
     if(!localSlots().includes(slot))return;
     const lk=slot<2?'a':'ArrowLeft',rk=slot<2?'d':'ArrowRight',jk=slot<2?' ':'ArrowUp';
-    if(keys[lk])p.x-=PS;else if(keys[rk])p.x+=PS;
+    const spd=moveSpeedFor(slot);
+    if(keys[lk])p.x-=spd;else if(keys[rk])p.x+=spd;
     if(keys[jk]&&p.onGround){
       p.vy=JV;p.onGround=false;
       spikeFired[slot]=false;
@@ -2042,6 +2160,10 @@ function physTick(){
   });
   if(phase!=='playing'){
     ballTrail=[];
+    return;
+  }
+  if(tsActive){
+    pushBallTrail();
     return;
   }
   pushBallTrail();
@@ -2731,9 +2853,10 @@ function draw(){
     const isBlocking=blockingSlots.has(i)||(p.blocking);
     if(!isBlocking||p.onGround)return;
     const c2=p.x+PW/2,cy2=p.y;
+    const br=blockRangeFor(i);
     cx.save();cx.strokeStyle='#00ff88';cx.shadowColor='#00ff88';cx.shadowBlur=16;
     cx.lineWidth=2.5;cx.globalAlpha=0.8;
-    cx.beginPath();cx.arc(c2,cy2,BLOCK_R,0,Math.PI*2);cx.stroke();cx.restore();
+    cx.beginPath();cx.arc(c2,cy2,br,0,Math.PI*2);cx.stroke();cx.restore();
   });
 
   PL.forEach((p,i)=>{if(p)drawPlayer(p,SCOL[i][0],SCOL[i][1]);});
@@ -2885,12 +3008,13 @@ function drawBall(){
 
 function drawMirageBalls(){
   if(!(isMirageAffected(0)||isMirageAffected(2)))return;
-  const t=Date.now()*0.005;
-  const ox1=18*Math.sin(t*1.4),oy1=8*Math.cos(t*1.9);
-  const ox2=-16*Math.cos(t*1.2),oy2=10*Math.sin(t*1.6);
+  const dt=0.24;
+  const xBase=ball.x+ball.vx*dt;
+  const yHigh=ball.y+(ball.vy-7.5)*dt+0.5*G*dt*dt;
+  const yLow=ball.y+(ball.vy+7.5)*dt+0.5*G*dt*dt;
   [
-    {x:ball.x+ox1,y:ball.y+oy1,a:0.45},
-    {x:ball.x+ox2,y:ball.y+oy2,a:0.4}
+    {x:xBase+ball.vx*0.08,y:yHigh,a:0.42},
+    {x:xBase-ball.vx*0.06,y:yLow,a:0.36}
   ].forEach(v=>{
     cx.save();
     cx.globalAlpha=v.a;
