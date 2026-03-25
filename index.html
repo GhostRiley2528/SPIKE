@@ -566,11 +566,10 @@ let ballTrail=[];
 let localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
 let oracleUnlocked=false,oracleUsedThisMatch=false;
 let webTrapUntil=[0,0,0,0];
-try{oracleUnlocked=localStorage.getItem('spike.secret.oracle_m4')==='1';}catch(e){}
 let mirageUnlocked=false;
-try{mirageUnlocked=localStorage.getItem('spike.secret.mirage_83')==='1';}catch(e){}
 let mirageUsedBySlot=[false,false,false,false];
 let mirageUntil=[0,0,0,0];
+let activeSecretCode='';
 let secretPanelGateOpen=false,logoTapCount=0,lastLogoTapAt=0,logoTapWindowStart=0;
 
 const SCOL=[['#00d4ff','#006888'],['#00ff88','#008844'],['#ff6b3d','#882200'],['#a78bfa','#442288']];
@@ -1194,13 +1193,7 @@ function updateSecretPanelStatus(){
     setSecretMessage('Access locked. Tap SPIKE! 5 times quickly.',true);
     return;
   }
-  const unlocked=[];
-  if(oracleUnlocked)unlocked.push('ORACLE_M4');
-  if(mirageUnlocked)unlocked.push('MIRAGE_83');
-  if(unlocked.length){
-    setSecretMessage(`Unlocked: ${unlocked.join(', ')}`);
-    return;
-  }
+  if(activeSecretCode){setSecretMessage(`Active code: ${activeSecretCode}`);return;}
   setSecretMessage('No active codes configured yet.');
 }
 function applySecretCode(){
@@ -1210,15 +1203,17 @@ function applySecretCode(){
   const code=(input.value||'').trim().toUpperCase();
   if(!code){setSecretMessage('Enter a code first.',true);return;}
   if(code==='ORACLE_M4'){
+    activeSecretCode='ORACLE_M4';
     oracleUnlocked=true;
-    try{localStorage.setItem('spike.secret.oracle_m4','1');}catch(e){}
+    mirageUnlocked=false;
     input.value='';
     updateSecretPanelStatus();
     return;
   }
   if(code==='MIRAGE_83'){
+    activeSecretCode='MIRAGE_83';
     mirageUnlocked=true;
-    try{localStorage.setItem('spike.secret.mirage_83','1');}catch(e){}
+    oracleUnlocked=false;
     input.value='';
     updateSecretPanelStatus();
     return;
@@ -2436,7 +2431,7 @@ function aiTick(){
     }
   }
 
-  const tx=botTargetX(ai,pred,hx,hn,onSide);
+  let tx=botTargetX(ai,pred,hx,hn,onSide);
   tx=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,tx));
   const dx=tx-ai.x;
   if(Math.abs(dx)>1)ai.x+=Math.sign(dx)*Math.min(cfg.spd,Math.abs(dx));
