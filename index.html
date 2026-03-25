@@ -1874,11 +1874,12 @@ function applyGuestAction(a){
     p.x=Math.max(slotMinX(2),Math.min(slotMaxX(2)-PW,p.x));
   }
   if(a.type==='aka_y'&&phase==='playing')activateAkaashiY(2,true);
-  if(a.type==='oracle'&&phase==='playing'&&!oracleUsedThisMatch)activateOracleWeb(2,true);
+  if(a.type==='oracle'&&phase==='playing')activateOracleWeb(2,true);
   if(a.type==='timestop'&&phase==='playing')activateTimeStop(2,true);
   if(a.type==='spike'&&phase==='playing'&&!p.onGround)doHitLocal(2,0.9,'spike');
   if(a.type==='skill'&&phase==='playing')doHitLocal(2,a.pwr,a.skill);
-  if(a.type==='mirage'&&phase==='playing'&&!mirageUsedBySlot[2]){
+  if(a.type==='mirage'&&phase==='playing'){
+    if(!hasAkaashiCode()&&mirageUsedBySlot[2])return;
     const dur=7000;
     applyMirageEffect(2,dur);
     fbPushEvent({type:'mirage',dur});
@@ -1948,18 +1949,21 @@ function activateOracleWeb(casterSlot=0,authoritative=false){
   } else if(!slotOwnedByUser(casterSlot)){
     return;
   }
-  if(oracleUsedThisMatch){setHm('ORACLE web already used this match.');return;}
+  const unlimited=hasAkaashiCode();
+  if(!unlimited&&oracleUsedThisMatch){setHm('ORACLE web already used this match.');return;}
   const targetSlot=slotSide(casterSlot)===0?2:0;
   const target=PL[targetSlot];
   if(!target)return;
   const dur=4000+Math.random()*1000;
   webTrapUntil[targetSlot]=Date.now()+dur;
-  oracleUsedThisMatch=true;
+  if(!unlimited)oracleUsedThisMatch=true;
   if(charge[targetSlot]){charge[targetSlot]=null;clearPbar(targetSlot);}
   blockingSlots.delete(targetSlot);
   spawnParts(target.x+PW/2,target.y+PH*0.45,'#d8e1f2',26);
   doFlash('ORACLE WEB','#d8e1f2',720,true);
-  setHm(`ORACLE WEB active for ${(dur/1000).toFixed(1)}s (used).`);
+  setHm(unlimited
+    ?`ORACLE WEB active for ${(dur/1000).toFixed(1)}s.`
+    :`ORACLE WEB active for ${(dur/1000).toFixed(1)}s (used).`);
   if(gmode==='online'&&mySlot===0){
     fbPushEvent({type:'oracle',target:targetSlot,dur:Math.round(dur)});
   }
@@ -1981,7 +1985,8 @@ function activateMirage(casterSlot=0){
   } else if(!localSlots().includes(casterSlot)){
     return;
   }
-  if(mirageUsedBySlot[casterSlot]){setHm('MIRAGE already used this match.');return;}
+  const unlimited=hasAkaashiCode();
+  if(!unlimited&&mirageUsedBySlot[casterSlot]){setHm('MIRAGE already used this match.');return;}
   const dur=7000;
   if(gmode==='online'&&casterSlot===2){
     fbSendAction({type:'mirage'});
@@ -2673,6 +2678,11 @@ let aiState={blocking:false,blockCool:0};
 function aiTick(){
   const ai=PL[2];if(!ai)return;
   const cfg=DIFF[diff];
+  const aiTune=diff==='hard'
+    ?{thirdChance:1,forceDist:175,forceTopGap:44,pwrFloor:0.95,jumpMul:1.08,delayJitter:8,coolMin:6,coolVar:4}
+    :diff==='med'
+      ?{thirdChance:0.86,forceDist:162,forceTopGap:50,pwrFloor:0.84,jumpMul:1.04,delayJitter:16,coolMin:8,coolVar:6}
+      :{thirdChance:0.58,forceDist:148,forceTopGap:58,pwrFloor:0.72,jumpMul:1.01,delayJitter:28,coolMin:11,coolVar:7};
   const onSide=ball.x>nx();
   const hn=sideHits[1];
   const aiCx=ai.x+PW/2;
@@ -2680,6 +2690,18 @@ function aiTick(){
   const hx=humanX();
 
   if(aiState.blockCool>0)aiState.blockCool--;
+  // Reactive jump-block: if an incoming attack is crossing the net, jump and form a block wall.
+  if(ai.onGround&&aiState.blockCool===0){
+    const incomingSpike=ball.vx>2.8&&ball.x>nx()-26&&ball.x<nx()+170&&ball.y<fl()-36;
+    const nearNet=Math.abs((ai.x+PW/2)-nx())<125;
+    const blockChance=diff==='hard'?0.92:diff==='med'?0.65:0.32;
+    if(incomingSpike&&nearNet&&Math.random()<blockChance){
+      ai.vy=JV*(diff==='hard'?1.06:1.0);
+      ai.onGround=false;
+      aiState.blocking=true;blockingSlots.add(2);updateSkillBar();
+      setTimeout(()=>{aiState.blocking=false;blockingSlots.delete(2);aiState.blockCool=42;updateSkillBar();},diff==='hard'?390:320);
+    }
+  }
   if(!aiState.blocking&&!ai.onGround&&aiState.blockCool===0){
     const rushing=ball.vx<-7&&ball.x<nx()+100&&ball.y<fl()-60;
     const chance=diff==='hard'?0.7:diff==='med'?0.4:0.05;
@@ -2708,15 +2730,22 @@ function aiTick(){
   // Force attack resolution on third touch: jump then spike as soon as it's reachable.
   if(onSide&&hn>=2&&phase==='playing'){
     const dist3=Math.abs(ball.x-(ai.x+PW/2));
-    if(ai.onGround&&ball.y<fl()-52&&ball.y>nt()+18&&dist3<165){
-      ai.vy=JV*1.07;
+    if(ai.onGround&&ball.y<fl()-aiTune.forceTopGap&&ball.y>nt()+18&&dist3<aiTune.forceDist&&Math.random()<aiTune.thirdChance){
+      ai.vy=JV*aiTune.jumpMul;
       ai.onGround=false;
       spikeFired[2]=false;
     }
     if(!ai.onGround&&inRangeForSkill(2,'spike')&&aiCool<=0){
-      doHitLocal(2,Math.max(0.9,cfg.pwr()),'spike');
+      doHitLocal(2,Math.max(aiTune.pwrFloor,cfg.pwr()),'spike');
       botAttackNudge('spike',humanX());
-      aiCool=8;
+      aiCool=aiTune.coolMin;
+      return;
+    }
+    // Emergency finisher: never let 3rd touch die on bot side if it's close enough.
+    if(aiCool<=0&&dist3<SPIKE_HR*1.95&&ball.y>nt()+8&&ball.y<fl()-14){
+      doHitLocal(2,Math.max(aiTune.pwrFloor,cfg.pwr()),'spike',true);
+      botAttackNudge('spike',humanX());
+      aiCool=aiTune.coolMin+1;
       return;
     }
   }
@@ -2729,28 +2758,29 @@ function aiTick(){
   const captHn=sideHits[1];
   const skill=chooseBotSkill(captHn,ai,hx);
   if(skill==='spike'&&ai.onGround){
-    ai.vy=JV*1.03;
+    ai.vy=JV*(diff==='hard'?1.06:diff==='med'?1.03:1.0);
     ai.onGround=false;
     spikeFired[2]=false;
   }
 
   const captSkill=skill;
-  const delay=cfg.ms+Math.random()*(diff==='hard'?12:18);
+  const delay=cfg.ms+Math.random()*aiTune.delayJitter;
   setTimeout(()=>{
     if(phase!=='playing'||sideHits[1]!==captHn||ball.x<=nx())return;
     if(!inRangeForSkill(2,captSkill))return;
     if(captSkill==='spike'&&PL[2]&&PL[2].onGround){
-      PL[2].vy=JV*1.03;
+      PL[2].vy=JV*(diff==='hard'?1.06:diff==='med'?1.03:1.0);
       PL[2].onGround=false;
       spikeFired[2]=false;
     }
     if(captSkill==='spike'&&!isAirborne(PL[2]))return;
 
-    doHitLocal(2,cfg.pwr(),captSkill);
+    const hitPower=captSkill==='spike'?Math.max(aiTune.pwrFloor,cfg.pwr()):cfg.pwr();
+    doHitLocal(2,hitPower,captSkill);
 
     botAttackNudge(captSkill,humanX());
   },delay);
-  aiCool=10+Math.floor(Math.random()*8);
+  aiCool=aiTune.coolMin+Math.floor(Math.random()*aiTune.coolVar);
 }
 function awardLocal(losingSide){
   if(phase!=='playing')return;
