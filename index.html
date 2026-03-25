@@ -24,11 +24,14 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .logo{position:relative;z-index:3;text-align:center;margin-bottom:1rem}
 .logo h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(68px,13vw,130px);color:var(--ye);text-shadow:0 0 40px #ffcc0280,4px 4px 0 var(--ac),8px 8px 0 #ff000044;line-height:1;letter-spacing:.04em}
 .logo p{font-size:clamp(10px,1.6vw,15px);letter-spacing:.4em;text-transform:uppercase;color:#fff7;text-shadow:0 0 8px #fff5}
-.menu-btns{position:relative;z-index:3;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-bottom:.8rem}
-.mbtn{font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:.1em;padding:12px 28px;border:2px solid var(--ye);background:transparent;color:var(--ye);cursor:pointer;border-radius:4px;transition:all .15s;position:relative;overflow:hidden;text-shadow:0 0 8px var(--ye)}
+.menu-shell{position:relative;z-index:3;width:min(980px,94vw);background:linear-gradient(165deg,#0a1223e6,#17122ae8 55%,#20110ee8);border:1px solid #ffffff2e;border-radius:20px;padding:1.2rem 1rem .9rem;box-shadow:0 24px 60px #0009,0 0 0 1px #ffcc0214 inset;backdrop-filter:blur(10px)}
+.menu-btns{position:relative;z-index:3;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:.8rem}
+.mbtn{font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:.1em;padding:14px 14px;border:2px solid var(--ye);background:linear-gradient(180deg,#ffffff12,#00000030);color:var(--ye);cursor:pointer;border-radius:10px;transition:all .15s;position:relative;overflow:hidden;text-shadow:0 0 8px var(--ye)}
 .mbtn::before{content:'';position:absolute;inset:0;background:var(--ye);transform:scaleX(0);transform-origin:left;transition:.15s;z-index:-1}
 .mbtn:hover{color:#111;text-shadow:none;box-shadow:0 0 18px var(--ye)}.mbtn:hover::before{transform:scaleX(1)}.mbtn:active{transform:scale(.97)}
-.mbtn.online{border-color:var(--gr);color:var(--gr);text-shadow:0 0 8px var(--gr)}.mbtn.online::before{background:var(--gr)}.mbtn.online:hover{box-shadow:0 0 18px var(--gr)}
+.mbtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.mbtn.online{border-color:var(--gr);color:var(--gr);text-shadow:0 0 8px var(--gr)}.mbtn.online::before{background:var(--gr)}.mbtn.online:hover{color:#052414;box-shadow:0 0 18px var(--gr)}
+.mbtn small{display:block;font-size:11px;letter-spacing:.12em;opacity:.85}
 .theme-row{position:relative;z-index:3;display:flex;gap:7px;align-items:center;margin-bottom:.7rem}
 .theme-label{font-size:12px;letter-spacing:.12em;color:#fff5;margin-right:2px}
 .tbtn{width:32px;height:32px;border-radius:6px;border:2px solid #fff2;cursor:pointer;transition:all .15s;flex-shrink:0}
@@ -40,10 +43,10 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .dbtn.active.easy{border-color:var(--gr);color:var(--gr);background:#00ff8818;box-shadow:0 0 10px #00ff8840}
 .dbtn.active.med{border-color:var(--ye);color:var(--ye);background:#ffcc0218;box-shadow:0 0 10px #ffcc0240}
 .dbtn.active.hard{border-color:var(--ac);color:var(--ac);background:#ff572218;box-shadow:0 0 10px #ff572240}
-.ctrl-row-outer{position:relative;z-index:3;display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
-.cc{background:#ffffff09;border:1px solid #ffffff1a;border-radius:8px;padding:8px 11px;backdrop-filter:blur(4px)}
-.cc h4{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.07em;color:var(--ye);margin-bottom:4px;text-shadow:0 0 6px var(--ye)}
-.cc p{font-size:10px;color:#fffb;line-height:1.7}
+.ctrl-row-outer{position:relative;z-index:3;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.cc{background:linear-gradient(180deg,#ffffff14,#ffffff08);border:1px solid #ffffff24;border-radius:10px;padding:10px 11px;backdrop-filter:blur(4px);min-height:108px}
+.cc h4{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.08em;color:var(--ye);margin-bottom:5px;text-shadow:0 0 6px var(--ye)}
+.cc p{font-size:10px;color:#fffb;line-height:1.6}
 .k{display:inline-block;background:#ffffff18;border:1px solid #ffffff33;border-radius:3px;padding:0 4px;font-size:9px;font-weight:700}
 .k.b{background:#00d4ff1e;border-color:var(--bl);color:var(--bl)}.k.s{background:#ffcc021e;border-color:var(--ye);color:var(--ye)}.k.sp{background:#ff57221e;border-color:var(--ac);color:var(--ac)}.k.bl{background:#00ff881e;border-color:var(--gr);color:var(--gr)}
 .lbox{position:relative;z-index:3;background:#ffffff0d;border:1px solid #ffffff22;border-radius:12px;padding:1.5rem 2rem;width:min(420px,92vw);text-align:center;backdrop-filter:blur(8px)}
@@ -183,10 +186,11 @@ body.mobile-mode .skgrp{gap:3px}
 body.mobile-mode .skb{font-size:9px;padding:2px 5px}
 body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
 @media (max-width: 900px){
-  .menu-btns{width:min(92vw,440px);flex-direction:column}
+  .menu-shell{padding:1rem .7rem .8rem}
+  .menu-btns{grid-template-columns:1fr}
   .mbtn{width:100%}
   .acct-actions{flex-direction:column}
-  .ctrl-row-outer{gap:6px;padding:0 10px}
+  .ctrl-row-outer{grid-template-columns:1fr 1fr;gap:6px;padding:0 2px}
   .cc{padding:7px 9px}
   .cc p{font-size:9px}
   .stats-box{padding:1.4rem 1rem}
@@ -202,6 +206,7 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
   .stats-val{font-size:22px}
   .stats-btns{flex-direction:column}
   .sbtn,.rmbtn{width:100%}
+  .ctrl-row-outer{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -210,11 +215,12 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
 <!-- MENU -->
 <div id="screen-menu" class="screen">
   <div class="mbg"></div><div class="msand"></div><div class="mnet"></div>
+  <div class="menu-shell">
   <div class="logo"><h1>SPIKE!</h1><p>Beach Volleyball</p></div>
   <div class="menu-btns">
-    <button class="mbtn online" onclick="showLobby()">🌐 Online (1v1 / 2v2)</button>
-    <button class="mbtn" onclick="startLocal('ai')">🤖 vs BOT</button>
-    <button class="mbtn" onclick="startLocal('1v1')">👥 1v1 Local</button>
+    <button class="mbtn online" onclick="showLobby()">Online Multiplayer<small>Create or join a room</small></button>
+    <button class="mbtn" onclick="startLocal('ai')">vs BOT<small>Solo match and rating climbs</small></button>
+    <button class="mbtn" onclick="startLocal('1v1')">1v1 Local<small>Two players, one keyboard</small></button>
   </div>
   <div class="theme-row">
     <span class="theme-label">COURT</span>
@@ -243,11 +249,12 @@ body.mobile-mode .ctrl-row-outer{max-width:min(740px,94vw)}
     </div>
   </div>
   <div class="ctrl-row-outer">
-    <div class="cc"><h4>Move</h4><p><span class="k">A</span><span class="k">D</span> move<br><span class="k">Space</span> jump · <span class="k">F</span> serve</p></div>
-    <div class="cc"><h4>Hits (P1)</h4><p><span class="k b">Hold E</span> Bump<br><span class="k s">Hold Q</span> Set<br><span class="k sp">Click (air)</span> Spike</p></div>
-    <div class="cc"><h4>Extra (P1)</h4><p><span class="k bl">Hold R</span> Block<br><span class="k" style="border-color:#ff2d78;color:#ff2d78">Hold T</span> Tip<br>(tip = soft touch)</p></div>
-    <div class="cc"><h4>P2 (Online)</h4><p>Same keys as P1!<br>Separate machines = no conflict<br><span class="k">A</span><span class="k">D</span> move · <span class="k">Space</span> jump<br><span class="k b">E</span> Bump · <span class="k s">Q</span> Set · <span class="k sp">Click</span> Spike</p></div>
-    <div class="cc"><h4>Rules</h4><p>Jump then Click = Spike<br>Or Click while jumping<br>Max 3 hits/side</p></div>
+    <div class="cc"><h4>Movement</h4><p><span class="k">A</span> / <span class="k">D</span> move<br><span class="k">Space</span> jump<br><span class="k">F</span> serve</p></div>
+    <div class="cc"><h4>Core Skills</h4><p><span class="k b">Hold E</span> bump<br><span class="k s">Hold Q</span> set<br><span class="k sp">Click mid-air</span> spike</p></div>
+    <div class="cc"><h4>Advanced</h4><p><span class="k bl">Hold R</span> block<br><span class="k" style="border-color:#ff2d78;color:#ff2d78">Hold T</span> tip<br>Max 3 hits per side</p></div>
+    <div class="cc"><h4>Online Notes</h4><p>Room code = 4 letters<br>Host creates, friend joins<br>Supports 1v1 and 2v2</p></div>
+    <div class="cc"><h4>Mobile</h4><p>Touch controls auto-show<br>Tap for spike while airborne<br>Hold skill buttons to charge</p></div>
+  </div>
   </div>
 </div>
 
