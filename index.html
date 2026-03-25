@@ -650,7 +650,8 @@ function slotOwnedByUser(slot){
   return slot===0;
 }
 function hasAkaashiBuff(slot){return hasAkaashiCode()&&slotOwnedByUser(slot);}
-function moveSpeedFor(slot){return PS*(hasAkaashiBuff(slot)?1.45:1);}
+function moveSpeedFor(slot){return PS*(hasAkaashiBuff(slot)?1.7:1);}
+function jumpVelocityFor(slot){return hasAkaashiBuff(slot)?JV*1.22:JV;}
 function blockRangeFor(slot){return hasAkaashiBuff(slot)?BLOCK_R*1.35:BLOCK_R;}
 function isTimeStopActive(){return Date.now()<timeStopUntil;}
 function isTimeStoppedSlot(slot){return isTimeStopActive()&&slot===timeStopTarget;}
@@ -755,7 +756,7 @@ function buildSkillBar(){
 }
 function slotKeyLabels(slot){
   if(slot===0)return['E','Q','Click','T','Hold R'];
-  if(slot===1)return['R','T','Click','Y','Hold U'];
+  if(slot===1)return['R','T','Click','F','Hold U'];
   if(slot===2)return['K','L','Click',';','Hold ,'];
   return[';',"'",'Click','[','Hold ]'];
 }
@@ -1024,19 +1025,19 @@ document.addEventListener('keydown',e=>{
   if(phase!=='playing')return;
   const k=e.key.toLowerCase();
   if(localSlots().includes(0)){
-    if(k==='y')activateAkaashiY(0);
+    if(k==='f')activateAkaashiY(0);
     if(k==='u')activateMirage(0);
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
   if(localSlots().includes(2)){
-    if(k==='y')activateAkaashiY(2);
+    if(gmode==='online'&&k==='f')activateAkaashiY(2);
     if(k==='u')activateMirage(2);
     if(gmode==='online'){
       if(k==='e')startCharge(2,'bump');if(k==='q')startCharge(2,'set');
       if(k==='t')startCharge(2,'tip');if(k==='r')startCharge(2,'block');
     } else {
-      if(k==='k')startCharge(2,'bump');if(k==='l')startCharge(2,'set');
+      if(k==='k')startCharge(2,'bump');if(k==='l'||k==='q')startCharge(2,'set');
       if(k===';')startCharge(2,'tip');if(k===',')startCharge(2,'block');
     }
   }
@@ -1048,7 +1049,7 @@ document.addEventListener('keyup',e=>{
     if(gmode==='online'){
       if(k==='e')releaseCharge(2,'bump');if(k==='q')releaseCharge(2,'set');if(k==='t')releaseCharge(2,'tip');if(k==='r')releaseCharge(2,'block');
     } else {
-      if(k==='k')releaseCharge(2,'bump');if(k==='l')releaseCharge(2,'set');if(k===';')releaseCharge(2,'tip');if(k===',')releaseCharge(2,'block');
+      if(k==='k')releaseCharge(2,'bump');if(k==='l'||k==='q')releaseCharge(2,'set');if(k===';')releaseCharge(2,'tip');if(k===',')releaseCharge(2,'block');
     }
   }
 });
@@ -1288,7 +1289,7 @@ function updateSecretPanelStatus(){
     return;
   }
   if(activeSecretCode){
-    if(activeSecretCode==='AKAASHI93')setSecretMessage('Active code: AKAASHI93 (MAX buffs + random Y abilities)');
+    if(activeSecretCode==='AKAASHI93')setSecretMessage('Active code: AKAASHI93 (MAX buffs + random F abilities)');
     else setSecretMessage(`Active code: ${activeSecretCode}`);
     return;
   }
@@ -1828,7 +1829,7 @@ function applyGuestAction(a){
       if(a.left)p.x-=guestSpd;else if(a.right)p.x+=guestSpd;
     }
     // FIX: Allow jumping during 'waiting' phase too
-    if(a.jump&&p.onGround){p.vy=JV;p.onGround=false;spikeFired[2]=false;}
+    if(a.jump&&p.onGround){p.vy=jumpVelocityFor(2);p.onGround=false;spikeFired[2]=false;}
     // FIX: Also check for mid-air spike while jump key held (in case timing is off)
     else if(!p.onGround&&a.jump){/* already airborne, handled elsewhere */}
     // Clamp position
@@ -2056,7 +2057,7 @@ function physTick(){
           else if(keys['d']||keys['ArrowRight'])myP.x+=mySpd;
         }
         if((keys[' ']||keys['ArrowUp'])&&myP.onGround){
-          myP.vy=JV;myP.onGround=false;spikeFired[mySlot]=false;
+          myP.vy=jumpVelocityFor(mySlot);myP.onGround=false;spikeFired[mySlot]=false;
           // FIX: Spike on jump — only trigger if game is playing
           if(spikeHeld[mySlot]&&phase==='playing'){
             spikeFired[mySlot]=true;
@@ -2148,7 +2149,7 @@ function physTick(){
     const spd=moveSpeedFor(slot);
     if(keys[lk])p.x-=spd;else if(keys[rk])p.x+=spd;
     if(keys[jk]&&p.onGround){
-      p.vy=JV;p.onGround=false;
+      p.vy=jumpVelocityFor(slot);p.onGround=false;
       spikeFired[slot]=false;
       if((spikeHeld[slot]||spikeGrace[slot]>0)&&!spikeFired[slot]){
         spikeFired[slot]=true;spikeGrace[slot]=0;doHitLocal(slot,0.9,'spike');
@@ -2671,13 +2672,22 @@ function aiTick(){
 
   const captHn=sideHits[1];
   const skill=chooseBotSkill(captHn,ai,hx);
-  if(skill==='spike'&&!isAirborne(ai)){aiCool=5;return;}
+  if(skill==='spike'&&ai.onGround){
+    ai.vy=JV*1.03;
+    ai.onGround=false;
+    spikeFired[2]=false;
+  }
 
   const captSkill=skill;
   const delay=cfg.ms+Math.random()*(diff==='hard'?12:18);
   setTimeout(()=>{
     if(phase!=='playing'||sideHits[1]!==captHn||ball.x<=nx())return;
     if(!inRangeForSkill(2,captSkill))return;
+    if(captSkill==='spike'&&PL[2]&&PL[2].onGround){
+      PL[2].vy=JV*1.03;
+      PL[2].onGround=false;
+      spikeFired[2]=false;
+    }
     if(captSkill==='spike'&&!isAirborne(PL[2]))return;
 
     doHitLocal(2,cfg.pwr(),captSkill);
