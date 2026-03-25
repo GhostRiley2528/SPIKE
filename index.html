@@ -712,6 +712,7 @@ let webTrapUntil=[0,0,0,0];
 let mirageUnlocked=false;
 let mirageUsedBySlot=[false,false,false,false];
 let mirageUntil=[0,0,0,0];
+let mirageCasterSlot=-1;
 let activeSecretCode='';
 let akaashiUnlocked=false;
 let rankAdminUnlocked=false,statsAdminUnlocked=false;
@@ -2104,6 +2105,7 @@ function fbListenState(){
         const dur=Math.max(1000,Math.min(12000,d.dur||7000));
         mirageUntil[0]=Date.now()+dur;
         mirageUntil[2]=Date.now()+dur;
+        mirageCasterSlot=typeof d.caster==='number'?d.caster:mirageCasterSlot;
         if(mySlot===0||mySlot===2)setHm(`MIRAGE active: fake balls for ${(dur/1000).toFixed(1)}s`);
       }
       if(d.type==='oracle'){
@@ -2164,7 +2166,7 @@ function applyGuestAction(a){
     if(!hasAkaashiCode()&&mirageUsedBySlot[2])return;
     const dur=7000;
     applyMirageEffect(2,dur);
-    fbPushEvent({type:'mirage',dur});
+    fbPushEvent({type:'mirage',dur,caster:2});
   }
   if(a.type==='serve'&&phase==='waiting'&&serving===2){
     phase='playing';hideOv();setHm('');
@@ -2218,6 +2220,7 @@ function clearTransientMatchState(){
   ballTrail=[];
   webTrapUntil=[0,0,0,0];
   mirageUntil=[0,0,0,0];
+  mirageCasterSlot=-1;
   timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
   pendingTimeStopHit=null;timeStopWasActive=false;
 }
@@ -2255,6 +2258,7 @@ function applyMirageEffect(casterSlot,durMs=7000){
   const targetSlot=slotSide(casterSlot)===0?2:0;
   mirageUntil[0]=Date.now()+durMs;
   mirageUntil[2]=Date.now()+durMs;
+  mirageCasterSlot=casterSlot;
   mirageUsedBySlot[casterSlot]=true;
   if(targetSlot===mySlot||casterSlot===mySlot)setHm(`MIRAGE active: fake balls for ${(durMs/1000).toFixed(1)}s`);
 }
@@ -2274,7 +2278,7 @@ function activateMirage(casterSlot=0){
     fbSendAction({type:'mirage'});
   } else if(gmode==='online'&&casterSlot===0){
     applyMirageEffect(0,dur);
-    fbPushEvent({type:'mirage',dur});
+    fbPushEvent({type:'mirage',dur,caster:0});
   }else{
     applyMirageEffect(casterSlot,dur);
   }
@@ -3262,8 +3266,8 @@ function draw(){
 
   PL.forEach((p,i)=>{if(p)drawPlayer(p,SCOL[i][0],SCOL[i][1]);});
   PL.forEach((p,i)=>{if(p&&isWebTrapped(i))drawWebTrap(p);});
-  drawBall();drawParts();
   drawMirageBalls();
+  drawBall();drawParts();
 
   if(phase==='playing'){
     const bs=ball.x<_nx?0:1,hn=sideHits[bs];
@@ -3409,27 +3413,50 @@ function drawBall(){
 
 function drawMirageBalls(){
   if(!(isMirageAffected(0)||isMirageAffected(2)))return;
+  const caster=mirageCasterSlot>=0?mirageCasterSlot:0;
+  const casterSide=slotSide(caster);
+  const viewerSide=mySlot>=0?slotSide(mySlot):0;
+  const friendlyView=viewerSide===casterSide;
   const dt=0.24;
-  const xBase=ball.x+ball.vx*dt;
-  const yHigh=ball.y+(ball.vy-7.5)*dt+0.5*G*dt*dt;
-  const yLow=ball.y+(ball.vy+7.5)*dt+0.5*G*dt*dt;
-  [
-    {x:xBase+ball.vx*0.08,y:yHigh,a:0.42},
-    {x:xBase-ball.vx*0.06,y:yLow,a:0.36}
-  ].forEach(v=>{
+  const xLead=ball.vx*dt;
+  const yLead=0.5*G*dt*dt;
+  const variants=[
+    {vxMul:1.04,vyBias:-7.6,a:friendlyView?0.34:1},
+    {vxMul:0.96,vyBias:7.6,a:friendlyView?0.28:1}
+  ];
+  variants.forEach(v=>{
+    const x=ball.x+xLead*v.vxMul;
+    const y=ball.y+(ball.vy+v.vyBias)*dt+yLead;
+    if(friendlyView){
+      cx.save();
+      cx.globalAlpha=v.a;
+      cx.translate(x,y);
+      cx.strokeStyle='#7ce7ff';
+      cx.fillStyle='rgba(124,231,255,0.16)';
+      cx.shadowColor='#7ce7ff';
+      cx.shadowBlur=12;
+      cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.fill();
+      cx.lineWidth=1.2;
+      cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.stroke();
+      cx.restore();
+      return;
+    }
     cx.save();
-    cx.globalAlpha=v.a;
-    cx.translate(v.x,v.y);
-    cx.strokeStyle='#7ce7ff';
-    cx.fillStyle='rgba(124,231,255,0.18)';
-    cx.shadowColor='#7ce7ff';
-    cx.shadowBlur=12;
-    cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.fill();
-    cx.lineWidth=1.2;
-    cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.stroke();
+    cx.globalAlpha=1;
+    cx.translate(x,y);
+    cx.rotate(ball.spin*0.97);
+    const bg=cx.createRadialGradient(-3,-4,1,0,0,BR);
+    bg.addColorStop(0,'#fffef0');bg.addColorStop(.5,'#f0e8c0');bg.addColorStop(1,'#d4c060');
+    cx.fillStyle=bg;cx.beginPath();cx.arc(0,0,BR,0,Math.PI*2);cx.fill();
+    cx.strokeStyle='#b09018';cx.lineWidth=1;
+    cx.beginPath();cx.moveTo(-BR,0);cx.lineTo(BR,0);cx.stroke();
+    cx.beginPath();cx.moveTo(0,-BR);cx.lineTo(0,BR);cx.stroke();
+    cx.beginPath();cx.arc(0,0,BR,.3,1.2);cx.stroke();
+    cx.beginPath();cx.arc(0,0,BR,Math.PI+.3,Math.PI+1.2);cx.stroke();
     cx.restore();
   });
 }
+
 
 let lastTs=0;
 function loop(ts){
