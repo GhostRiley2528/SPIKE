@@ -996,7 +996,8 @@ applyMobileHandedness();
 
 // ── INPUT ─────────────────────────────────────────────────────────────────
 document.addEventListener('keydown',e=>{
-  if(keys[e.key])return;keys[e.key]=true;
+  if(keys[e.key])return;
+  setKeyState(e.key,true);
   if(e.key===' ')e.preventDefault();
 
   // FIX: Allow serve input for both 'waiting' and 'playing' to avoid phase mismatch.
@@ -1011,12 +1012,12 @@ document.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(localSlots().includes(0)){
     if(k==='y')activateOracleWeb();
-    if(k==='u')activateMirage();
+    if(k==='u')activateMirage(0);
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
   if(localSlots().includes(2)){
-    if(k==='u')activateMirage();
+    if(k==='u')activateMirage(2);
     if(gmode==='online'){
       if(k==='e')startCharge(2,'bump');if(k==='q')startCharge(2,'set');
       if(k==='t')startCharge(2,'tip');if(k==='r')startCharge(2,'block');
@@ -1027,7 +1028,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 document.addEventListener('keyup',e=>{
-  keys[e.key]=false;const k=e.key.toLowerCase();
+  setKeyState(e.key,false);const k=e.key.toLowerCase();
   if(localSlots().includes(0)){if(k==='e')releaseCharge(0,'bump');if(k==='q')releaseCharge(0,'set');if(k==='t')releaseCharge(0,'tip');if(k==='r')releaseCharge(0,'block');}
   if(localSlots().includes(2)){
     if(gmode==='online'){
@@ -1037,6 +1038,8 @@ document.addEventListener('keyup',e=>{
     }
   }
 });
+window.addEventListener('blur',clearAllKeys);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)clearAllKeys();});
 
 cv.addEventListener('mousedown',e=>{
   if(e.button!==0)return;e.preventDefault();
@@ -1075,6 +1078,19 @@ function sendKeys(){
   const jump=!!keys[' ']||!!keys['ArrowUp'];
   // Always send if any key is pressed so guest movement is always responsive
   fbSendAction({type:'keys',left,right,jump});
+}
+
+function setKeyState(key,isDown){
+  if(!key)return;
+  keys[key]=isDown;
+  if(typeof key==='string'&&key.length===1){
+    keys[key.toLowerCase()]=isDown;
+    keys[key.toUpperCase()]=isDown;
+  }
+}
+
+function clearAllKeys(){
+  clearAllKeys();
 }
 
 // ── LOCAL HIT ─────────────────────────────────────────────────────────────
@@ -1761,7 +1777,7 @@ function applyGuestAction(a){
   }
   if(a.type==='spike'&&phase==='playing'&&!p.onGround)doHitLocal(2,0.9,'spike');
   if(a.type==='skill'&&phase==='playing')doHitLocal(2,a.pwr,a.skill);
-  if(a.type==='mirage'&&phase==='playing'&&mirageUnlocked&&!mirageUsedBySlot[2]){
+  if(a.type==='mirage'&&phase==='playing'&&!mirageUsedBySlot[2]){
     const dur=7000;
     applyMirageEffect(2,dur);
     fbPushEvent({type:'mirage',dur});
@@ -1844,18 +1860,23 @@ function applyMirageEffect(casterSlot,durMs=7000){
   if(targetSlot===mySlot||casterSlot===mySlot)setHm(`MIRAGE active: fake balls for ${(durMs/1000).toFixed(1)}s`);
 }
 
-function activateMirage(){
+function activateMirage(casterSlot=0){
   if(!mirageUnlocked){setHm('MIRAGE_83 is locked. Use secret code first.');return;}
   if(phase!=='playing'){setHm('MIRAGE can only be used during a rally.');return;}
-  if(gmode!=='online'){setHm('MIRAGE_83 currently works in online matches only.');return;}
-  if(mySlot!==0&&mySlot!==2){return;}
-  if(mirageUsedBySlot[mySlot]){setHm('MIRAGE already used this match.');return;}
+  if(gmode==='online'){
+    if(casterSlot!==mySlot)return;
+  } else if(!localSlots().includes(casterSlot)){
+    return;
+  }
+  if(mirageUsedBySlot[casterSlot]){setHm('MIRAGE already used this match.');return;}
   const dur=7000;
-  if(mySlot===0){
+  if(gmode==='online'&&casterSlot===2){
+    fbSendAction({type:'mirage'});
+  } else if(gmode==='online'&&casterSlot===0){
     applyMirageEffect(0,dur);
     fbPushEvent({type:'mirage',dur});
   }else{
-    fbSendAction({type:'mirage'});
+    applyMirageEffect(casterSlot,dur);
   }
   doFlash('MIRAGE','#7ce7ff',620,true);
 }
@@ -2863,10 +2884,7 @@ function drawBall(){
 }
 
 function drawMirageBalls(){
-  if(gmode!=='online')return;
-  const mySideSlot=(mySlot===0||mySlot===2)?mySlot:null;
-  const hostMirage=isMirageAffected(0)||isMirageAffected(2);
-  if(!hostMirage&&!(mySideSlot!==null&&isMirageAffected(mySideSlot)))return;
+  if(!(isMirageAffected(0)||isMirageAffected(2)))return;
   const t=Date.now()*0.005;
   const ox1=18*Math.sin(t*1.4),oy1=8*Math.cos(t*1.9);
   const ox2=-16*Math.cos(t*1.2),oy2=10*Math.sin(t*1.6);
