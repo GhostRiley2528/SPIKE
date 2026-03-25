@@ -166,9 +166,11 @@ canvas{display:block;width:100%;height:100%;cursor:crosshair}
 .rmbtn:hover{color:#111;text-shadow:none}.rmbtn:hover::before{transform:scaleX(1)}
 #mobile-ui{position:absolute;left:0;right:0;bottom:0;display:none;justify-content:space-between;align-items:flex-end;padding:14px 12px calc(14px + env(safe-area-inset-bottom));z-index:18;pointer-events:none}
 .mobile-cluster{display:flex;gap:10px;align-items:flex-end;pointer-events:auto}
-.mobile-pad{display:grid;grid-template-columns:64px 64px;gap:10px}
+.mobile-joystick{position:relative;width:140px;height:140px;touch-action:none}
+.joy-base{position:absolute;inset:0;border-radius:50%;border:1px solid #ffffff50;background:radial-gradient(circle at 35% 30%,#ffffff2a,#ffffff0e 62%,#00000024);backdrop-filter:blur(4px)}
+.joy-knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin-left:-31px;margin-top:-31px;border-radius:50%;border:1px solid #00d4ff88;background:radial-gradient(circle at 35% 30%,#00d4ff66,#00d4ff1f 70%,#00000035);box-shadow:0 8px 18px #0006;pointer-events:none;transition:transform .05s linear}
 .mobile-actions{display:grid;grid-template-columns:repeat(3,64px);gap:10px;justify-items:center}
-.mctl{width:64px;height:64px;border-radius:18px;border:1px solid #ffffff35;background:linear-gradient(180deg,#ffffff20,#00000055);color:#fff;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.08em;backdrop-filter:blur(8px);box-shadow:0 10px 22px #0008;touch-action:none;user-select:none}
+.mctl{width:64px;height:64px;border-radius:18px;border:1px solid #ffffff52;background:linear-gradient(180deg,#ffffff1c,#0000002a);color:#fff;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.08em;backdrop-filter:blur(8px);box-shadow:0 8px 16px #0006;touch-action:none;user-select:none}
 .mctl.wide{width:138px}
 .mctl.accent{border-color:#ffcc02;color:#ffcc02;text-shadow:0 0 10px #ffcc02}
 .mctl.attack{border-color:#ff5722;color:#ff5722;text-shadow:0 0 10px #ff5722}
@@ -194,7 +196,8 @@ body.mobile-mode.mobile-landscape #orientation-tip{display:none}
 body.mobile-mode.mobile-landscape #mobile-ui{padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
 body.mobile-mode.mobile-landscape #mobile-hand-toggle{bottom:calc(78px + env(safe-area-inset-bottom));font-size:12px;padding:5px 10px}
 body.mobile-mode.mobile-landscape .mobile-cluster{gap:7px}
-body.mobile-mode.mobile-landscape .mobile-pad{grid-template-columns:repeat(4,56px);gap:8px}
+body.mobile-mode.mobile-landscape .mobile-joystick{width:120px;height:120px}
+body.mobile-mode.mobile-landscape .joy-knob{width:52px;height:52px;margin-left:-26px;margin-top:-26px}
 body.mobile-mode.mobile-landscape .mobile-actions{grid-template-columns:repeat(5,56px);gap:8px}
 body.mobile-mode.mobile-landscape .mctl{width:56px;height:56px;border-radius:14px;font-size:15px}
 body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
@@ -366,15 +369,15 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
     <div id="sflash"></div>
     <div id="mobile-ui">
       <div class="mobile-cluster">
-        <div class="mobile-pad">
-          <button class="mctl utility" data-control="left">LEFT</button>
-          <button class="mctl utility" data-control="right">RIGHT</button>
-          <button class="mctl accent" data-control="jump">JUMP</button>
-          <button class="mctl accent" data-control="serve">SERVE</button>
+        <div class="mobile-joystick" id="mobile-joystick" aria-label="Movement joystick">
+          <div class="joy-base"></div>
+          <div class="joy-knob" id="joy-knob"></div>
         </div>
       </div>
       <div class="mobile-cluster">
         <div class="mobile-actions">
+          <button class="mctl utility" data-control="jump">JUMP</button>
+          <button class="mctl accent" data-control="serve">SERVE</button>
           <button class="mctl utility" data-control="bump">BUMP</button>
           <button class="mctl accent" data-control="set">SET</button>
           <button class="mctl tip" data-control="tip">TIP</button>
@@ -411,6 +414,7 @@ function resize(){
   const el=document.getElementById('cw');
   W=el.clientWidth;H=el.clientHeight;cv.width=W;cv.height=H;
   updateMobileUI();
+  updateJoystickTuning();
 }
 window.addEventListener('resize',resize);
 window.addEventListener('orientationchange',()=>{setTimeout(resize,120);releaseAllMobileControls();},{passive:true});
@@ -707,6 +711,7 @@ function updateMobileUI(){
   document.body.classList.toggle('mobile-mode',mobile);
   document.body.classList.toggle('mobile-landscape',landscape);
   document.body.classList.toggle('mobile-portrait',mobile&&!landscape);
+  if(!mobile)releaseAllMobileControls();
 }
 function mobilePress(control){
   const slot=mobilePrimarySlot();
@@ -739,6 +744,97 @@ function mobileRelease(control){
   if(['bump','set','tip','block'].includes(control))releaseCharge(slot,control);
 }
 
+const joystickEl=document.getElementById('mobile-joystick');
+const joystickKnob=document.getElementById('joy-knob');
+let joystickPointerId=null;
+const joystickState={x:0,y:0};
+const joystickLatch={left:false,right:false};
+const joystickTuning={dead:0.2,release:0.12,expo:1.35,maxShift:34};
+function updateJoystickTuning(){
+  if(!joystickEl)return;
+  const r=joystickEl.getBoundingClientRect();
+  const shortest=Math.min(window.innerWidth,window.innerHeight);
+  const compact=shortest<=390;
+  const large=shortest>=430;
+  const landscape=isLandscapeViewport();
+  let dead=landscape?0.17:0.21;
+  if(compact)dead+=0.035;
+  if(large)dead-=0.02;
+  joystickTuning.dead=Math.max(0.12,Math.min(0.32,dead));
+  joystickTuning.release=Math.max(0.08,joystickTuning.dead-0.09);
+  let expo=compact?1.58:1.42;
+  if(landscape)expo-=0.08;
+  joystickTuning.expo=Math.max(1.1,Math.min(1.9,expo));
+  joystickTuning.maxShift=Math.max(20,Math.round((Math.min(r.width,r.height)-62)/2));
+}
+function setJoystickKeys(){
+  const x=joystickState.x;
+  joystickLatch.left=joystickLatch.left?x<-joystickTuning.release:x<-joystickTuning.dead;
+  joystickLatch.right=joystickLatch.right?x>joystickTuning.release:x>joystickTuning.dead;
+  if(joystickLatch.left&&joystickLatch.right){
+    if(Math.abs(x)<joystickTuning.release){joystickLatch.left=false;joystickLatch.right=false;}
+    else if(x<0)joystickLatch.right=false;
+    else joystickLatch.left=false;
+  }
+  keys['a']=joystickLatch.left;keys['ArrowLeft']=joystickLatch.left;
+  keys['d']=joystickLatch.right;keys['ArrowRight']=joystickLatch.right;
+}
+function setJoystickVisual(x,y){
+  joystickState.x=x;joystickState.y=y;
+  if(joystickKnob){
+    joystickKnob.style.transform=`translate(${Math.round(x*joystickTuning.maxShift)}px,${Math.round(y*joystickTuning.maxShift)}px)`;
+  }
+}
+function resetJoystick(){
+  joystickPointerId=null;
+  joystickLatch.left=false;joystickLatch.right=false;
+  setJoystickVisual(0,0);
+  setJoystickKeys();
+}
+function updateJoystickFromEvent(e){
+  if(!joystickEl)return;
+  const r=joystickEl.getBoundingClientRect();
+  const cx=r.left+r.width/2,cy=r.top+r.height/2;
+  const maxR=Math.max(20,(Math.min(r.width,r.height)/2)-10);
+  let dx=e.clientX-cx,dy=e.clientY-cy;
+  const len=Math.hypot(dx,dy)||1;
+  if(len>maxR){dx=(dx/len)*maxR;dy=(dy/len)*maxR;}
+  let nx=dx/maxR,ny=dy/maxR;
+  const mag=Math.min(1,Math.hypot(nx,ny));
+  if(mag>0){
+    const curved=Math.pow(mag,joystickTuning.expo);
+    nx=(nx/mag)*curved;
+    ny=(ny/mag)*curved;
+  }
+  setJoystickVisual(nx,ny);
+  setJoystickKeys();
+}
+if(joystickEl){
+  updateJoystickTuning();
+  const onJoyDown=e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    e.preventDefault();
+    joystickPointerId=e.pointerId;
+    if(joystickEl.setPointerCapture)joystickEl.setPointerCapture(e.pointerId);
+    updateJoystickFromEvent(e);
+  };
+  const onJoyMove=e=>{
+    if(e.pointerId!==joystickPointerId)return;
+    e.preventDefault();
+    updateJoystickFromEvent(e);
+  };
+  const onJoyUp=e=>{
+    if(e.pointerId!==joystickPointerId)return;
+    e.preventDefault();
+    resetJoystick();
+  };
+  joystickEl.addEventListener('pointerdown',onJoyDown,{passive:false});
+  joystickEl.addEventListener('pointermove',onJoyMove,{passive:false});
+  joystickEl.addEventListener('pointerup',onJoyUp,{passive:false});
+  joystickEl.addEventListener('pointercancel',onJoyUp,{passive:false});
+  joystickEl.addEventListener('lostpointercapture',onJoyUp,{passive:false});
+}
+
 const mobilePointerControl=new Map();
 function releaseAllMobileControls(){
   ['a','d','ArrowLeft','ArrowRight',' ','ArrowUp'].forEach(k=>keys[k]=false);
@@ -750,6 +846,7 @@ function releaseAllMobileControls(){
   }
   document.querySelectorAll('#mobile-ui .mctl.active').forEach(el=>el.classList.remove('active'));
   mobilePointerControl.clear();
+  resetJoystick();
 }
 document.querySelectorAll('#mobile-ui [data-control]').forEach(btn=>{
   const control=btn.dataset.control;
