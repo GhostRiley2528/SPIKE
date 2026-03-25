@@ -1246,6 +1246,9 @@ function doHitLocal(slot,pwr,skill,force=false){
   sideHits[side]++;lastHitSide=side;lastHitSlot=slot;rallyHits++;
   const spM=Math.min(1.4,1+rallyHits*0.035);
   const pr=hasAkaashiBuff(slot)?1:Math.max(0.3,Math.min(1,pwr));
+  const bumpMul=getStatMul(slot,'bump');
+  const setMul=getStatMul(slot,'set');
+  const spikeMul=getStatMul(slot,'spike');
   const cxp=p.x+PW/2,cyp=p.y;
   const ddx=ball.x-cxp,ddy=ball.y-cyp;
   const dl=Math.max(1,Math.sqrt(ddx*ddx+ddy*ddy));
@@ -1253,12 +1256,12 @@ function doHitLocal(slot,pwr,skill,force=false){
 
   if(skill==='bump'){
     const drift=(side===0?1:-1)*(0.5+pr*0.8);
-    ball.vx=drift*spM;ball.vy=-(14+pr*7)*spM;
+    ball.vx=drift*spM*bumpMul;ball.vy=-(14+pr*7)*spM*bumpMul;
     doFlash('BUMP','#00d4ff');spawnParts(ball.x,ball.y,'#00d4ff',12);flashTap(slot,'bump');sndBump();
   } else if(skill==='set'){
     const st=side===0?nx()-(60-pr*40):nx()+(60-pr*40);
     const sdx=st-ball.x;
-    ball.vx=(sdx/Math.max(1,Math.abs(sdx)))*(2.5+pr*2)*spM;ball.vy=-(14+pr*5)*spM;
+    ball.vx=(sdx/Math.max(1,Math.abs(sdx)))*(2.5+pr*2)*spM*setMul;ball.vy=-(14+pr*5)*spM*setMul;
     doFlash('SET','#ffcc02');spawnParts(ball.x,ball.y,'#ffcc02',12);flashTap(slot,'set');sndSet();
   } else if(skill==='tip'){
     const dir=side===0?1:-1;
@@ -1275,11 +1278,11 @@ function doHitLocal(slot,pwr,skill,force=false){
     const netGap=Math.max(30,Math.abs(nx()-ball.x));
     const reach=Math.max(80,Math.abs(tx));
     const crossFactor=Math.min(1,reach/(W*0.45));
-    const vxBase=(11.5+pr*7.5)*spM;
+    const vxBase=(11.5+pr*7.5)*spM*spikeMul;
     const clearance=(netGap<140?5.8:4.2)-crossFactor*1.4;
     ball.vx=spikeDir*Math.max(7.2,Math.min(16,vxBase*(0.78+crossFactor*0.34)));
     ball.vx+=Math.sign(tx)*Math.min(3.2,Math.abs(tx)/95);
-    ball.vy=-(clearance+pr*1.6);
+    ball.vy=-(clearance+pr*1.6)*spikeMul;
 
     spikeCool[slot]=40;
     doFlash('SPIKE!','#ff5722',700,true);
@@ -1392,19 +1395,124 @@ function setSecretMessage(msg,isErr=false){
   el.textContent=msg||'';
   el.style.color=isErr?'#ff6b6b':'#fff8';
 }
+function setAdminMessage(msg,isErr=false){
+  const el=document.getElementById('admin-msg');
+  if(!el)return;
+  el.textContent=msg||'';
+  el.style.color=isErr?'#ff6b6b':'#fff8';
+}
+function updateAdminPanelStatus(){
+  const card=document.getElementById('admin-card');
+  if(!card)return;
+  const rankSec=document.getElementById('admin-rank-sec');
+  const statsSec=document.getElementById('admin-stats-sec');
+  const title=document.getElementById('admin-title');
+  const rankOn=activeSecretCode==='RANKK'&&rankAdminUnlocked;
+  const statsOn=activeSecretCode==='STATSS'&&statsAdminUnlocked;
+  card.classList.toggle('show',rankOn||statsOn);
+  if(rankSec)rankSec.classList.toggle('show',rankOn);
+  if(statsSec)statsSec.classList.toggle('show',statsOn);
+  if(title)title.textContent=rankOn?'Rank Admin':'Stats Admin';
+  if(rankOn||statsOn)setAdminMessage('');
+}
+function resolveLocalTargetSlot(raw){
+  const t=(raw||'').trim().toUpperCase();
+  if(!t||t==='SELF'||t==='ME'||t==='P1')return 0;
+  if(t==='P2')return 2;
+  if(t==='BOT')return 2;
+  return null;
+}
+function applyStatsToSlot(slot,stats){
+  if(slot<0||slot>3)return;
+  slotStatMul[slot]=sanitizeStats(stats);
+}
+function readStatsInputs(){
+  return sanitizeStats({
+    speed:document.getElementById('admin-st-speed')?.value,
+    jump:document.getElementById('admin-st-jump')?.value,
+    spike:document.getElementById('admin-st-spike')?.value,
+    set:document.getElementById('admin-st-set')?.value,
+    bump:document.getElementById('admin-st-bump')?.value,
+    block:document.getElementById('admin-st-block')?.value,
+  });
+}
+function currentUserName(){
+  return normalizeUsername((currentProfile&&currentProfile.username)||(currentProfile&&currentProfile.displayName)||'');
+}
+async function resolveUidByUsername(name){
+  const normalized=normalizeUsername(name||'');
+  if(!normalized)return currentUser&&currentUser.uid?currentUser.uid:null;
+  if(currentProfile&&normalizeUsername(currentProfile.username||currentProfile.displayName)===normalized&&currentUser)return currentUser.uid;
+  if(!fbInit())return null;
+  const snap=await fbDb.ref(`${USERNAME_PATH}/${normalized}`).once('value');
+  return snap.exists()?snap.val():null;
+}
+async function adminApplyRank(){
+  if(activeSecretCode!=='RANKK'){setAdminMessage('Enter RANKK first.',true);return;}
+  try{
+    const user=(document.getElementById('admin-rank-user')?.value||'').trim();
+    const uid=await resolveUidByUsername(user);
+    if(!uid){setAdminMessage('User not found.',true);return;}
+    if(!fbInit()){setAdminMessage('Firebase unavailable.',true);return;}
+    const updates={};
+    const rating=Number(document.getElementById('admin-rank-rating')?.value);
+    const wins=Number(document.getElementById('admin-rank-wins')?.value);
+    const losses=Number(document.getElementById('admin-rank-losses')?.value);
+    const games=Number(document.getElementById('admin-rank-games')?.value);
+    if(Number.isFinite(rating))updates.rating=Math.max(0,Math.round(rating));
+    if(Number.isFinite(wins))updates.wins=Math.max(0,Math.round(wins));
+    if(Number.isFinite(losses))updates.losses=Math.max(0,Math.round(losses));
+    if(Number.isFinite(games))updates.games=Math.max(0,Math.round(games));
+    if(!Object.keys(updates).length){setAdminMessage('Enter at least one rank value.',true);return;}
+    await fbDb.ref(`${PROFILE_PATH}/${uid}`).update(updates);
+    if(currentUser&&uid===currentUser.uid){await loadCurrentProfile(uid);}
+    setAdminMessage('Rank profile updated.');
+  }catch(e){setAdminMessage(e.message||'Rank update failed.',true);}
+}
+async function adminApplyStats(){
+  if(activeSecretCode!=='STATSS'){setAdminMessage('Enter STATSS first.',true);return;}
+  try{
+    const stats=readStatsInputs();
+    const targetRaw=document.getElementById('admin-stats-target')?.value||'';
+    const slot=resolveLocalTargetSlot(targetRaw);
+    if(slot!==null){
+      applyStatsToSlot(slot,stats);
+      if(gmode==='online'&&mySlot>=0&&slot===0)applyStatsToSlot(mySlot,stats);
+      setAdminMessage(`Local stats applied to ${slot===0?'SELF':'P2/BOT'}.`);
+    }
+    const user=(document.getElementById('admin-stats-user')?.value||'').trim()||currentUserName();
+    if(user&&fbInit()){
+      const uid=await resolveUidByUsername(user);
+      if(uid){
+        await fbDb.ref(`${PROFILE_PATH}/${uid}/customStats`).set(stats);
+        if(currentUser&&uid===currentUser.uid){await loadCurrentProfile(uid);}
+        setAdminMessage(`Stats saved for ${user}.`);
+      } else if(slot===null){
+        setAdminMessage('User not found.',true);
+      }
+    } else if(slot===null){
+      setAdminMessage('Set target slot or username.',true);
+    }
+  }catch(e){setAdminMessage(e.message||'Stats update failed.',true);}
+}
 function updateSecretPanelStatus(){
   const card=document.getElementById('secret-card');
   if(card)card.classList.toggle('locked',!secretPanelGateOpen);
   if(!secretPanelGateOpen){
     setSecretMessage('Access locked. Tap SPIKE! 5 times quickly.',true);
+    updateAdminPanelStatus();
     return;
   }
   if(activeSecretCode){
     if(activeSecretCode==='AKAASHI93')setSecretMessage('Active code: AKAASHI93 (MAX buffs + random F abilities)');
+    else if(activeSecretCode==='RANKK')setSecretMessage('Active code: RANKK (rank admin panel unlocked)');
+    else if(activeSecretCode==='STATSS')setSecretMessage('Active code: STATSS (stats admin panel unlocked)');
     else setSecretMessage(`Active code: ${activeSecretCode}`);
+    updateAdminPanelStatus();
     return;
   }
   setSecretMessage('No active codes configured yet.');
+  updateAdminPanelStatus();
 }
 function applySecretCode(){
   const input=document.getElementById('secret-input');
@@ -1417,6 +1525,8 @@ function applySecretCode(){
     oracleUnlocked=true;
     mirageUnlocked=false;
     akaashiUnlocked=false;
+    rankAdminUnlocked=false;
+    statsAdminUnlocked=false;
     timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
     input.value='';
     updateSecretPanelStatus();
@@ -1427,6 +1537,8 @@ function applySecretCode(){
     mirageUnlocked=true;
     oracleUnlocked=false;
     akaashiUnlocked=false;
+    rankAdminUnlocked=false;
+    statsAdminUnlocked=false;
     timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
     input.value='';
     updateSecretPanelStatus();
@@ -1437,6 +1549,31 @@ function applySecretCode(){
     akaashiUnlocked=true;
     oracleUnlocked=true;
     mirageUnlocked=true;
+    rankAdminUnlocked=false;
+    statsAdminUnlocked=false;
+    input.value='';
+    updateSecretPanelStatus();
+    return;
+  }
+  if(code==='RANKK'){
+    activeSecretCode='RANKK';
+    rankAdminUnlocked=true;
+    statsAdminUnlocked=false;
+    akaashiUnlocked=false;
+    oracleUnlocked=false;
+    mirageUnlocked=false;
+    timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
+    input.value='';
+    updateSecretPanelStatus();
+    return;
+  }
+  if(code==='STATSS'){
+    activeSecretCode='STATSS';
+    statsAdminUnlocked=true;
+    rankAdminUnlocked=false;
+    akaashiUnlocked=false;
+    oracleUnlocked=false;
+    mirageUnlocked=false;
     input.value='';
     updateSecretPanelStatus();
     return;
@@ -1448,8 +1585,11 @@ function clearSecretCode(){
   oracleUnlocked=false;
   mirageUnlocked=false;
   akaashiUnlocked=false;
+  rankAdminUnlocked=false;
+  statsAdminUnlocked=false;
   timeStopUntil=0;timeStopTarget=-1;timeStopCaster=-1;
   updateSecretPanelStatus();
+  setAdminMessage('');
 }
 function runSecretUnlockFx(){
   const logo=document.getElementById('menu-logo');
@@ -2936,6 +3076,10 @@ function launchGame(mode,lm){
   clearTransientMatchState();
   phase='waiting';
   releaseAllMobileControls();
+  slotStatMul=[{...DEF_STAT_MUL},{...DEF_STAT_MUL},{...DEF_STAT_MUL},{...DEF_STAT_MUL}];
+  const selfStats=sanitizeStats(currentProfile&&currentProfile.customStats?currentProfile.customStats:DEF_STAT_MUL);
+  slotStatMul[0]={...selfStats};
+  if(mode==='online'&&mySlot>=0)slotStatMul[mySlot]={...selfStats};
   oracleUsedThisMatch=false;
   mirageUsedBySlot=[false,false,false,false];
   webTrapUntil=[0,0,0,0];
