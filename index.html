@@ -119,6 +119,17 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .settings-row{display:flex;gap:8px;flex-wrap:wrap}
 .settings-btn{flex:1;min-width:120px;padding:8px 10px;border:1.5px solid #ffffff33;border-radius:8px;background:#ffffff10;color:#fff;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.08em;cursor:pointer}
 .settings-btn.on{border-color:var(--gr);color:var(--gr);background:#00ff8816;box-shadow:0 0 10px #00ff8833}
+.admin-card{position:relative;z-index:3;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:10px 12px;margin:.7rem auto 0;width:min(460px,92vw);backdrop-filter:blur(8px);display:none}
+.admin-card.show{display:block}
+.admin-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.08em;color:#ffb347;text-shadow:0 0 10px #ffb34755;margin-bottom:8px}
+.admin-sec{display:none}
+.admin-sec.show{display:block}
+.admin-hint{font-size:11px;letter-spacing:.05em;color:#fff8;margin-bottom:8px}
+.admin-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.admin-input{flex:1;min-width:120px;padding:7px 9px;background:#ffffff11;border:1.5px solid #ffffff33;border-radius:6px;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none}
+.admin-input:focus{border-color:#ffb347;box-shadow:0 0 10px #ffb34744}
+.admin-btn{padding:7px 10px;border:1.5px solid #ffb347;border-radius:6px;background:#ffb3471a;color:#ffb347;font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.07em;cursor:pointer}
+.admin-msg{min-height:16px;font-size:11px;letter-spacing:.05em;color:#fff8}
 .auth-box,.board-box{background:#ffffff0a;border:1px solid #ffffff22;border-radius:14px;padding:1.6rem 1.5rem;width:min(480px,92vw);backdrop-filter:blur(8px)}
 .auth-box h2,.board-box h2{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:.08em;color:var(--ye);margin-bottom:1rem;text-align:center;text-shadow:0 0 12px var(--ye)}
 .auth-grid{display:grid;gap:10px}
@@ -340,6 +351,45 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       <button class="settings-btn" id="set-shake" type="button" onclick="toggleSetting('shake')">Shake: ON</button>
       <button class="settings-btn" id="set-trail" type="button" onclick="toggleSetting('trail')">Trail: ON</button>
     </div>
+  </div>
+  <div class="admin-card" id="admin-card">
+    <div class="admin-title" id="admin-title">Dev Panel</div>
+    <div class="admin-sec" id="admin-rank-sec">
+      <div class="admin-hint">RANKK: edit rank/rating and W/L record for any username.</div>
+      <div class="admin-row">
+        <input id="admin-rank-user" class="admin-input" placeholder="USERNAME (blank = me)" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"/>
+      </div>
+      <div class="admin-row">
+        <input id="admin-rank-rating" class="admin-input" type="number" placeholder="Rating"/>
+        <input id="admin-rank-wins" class="admin-input" type="number" placeholder="Wins"/>
+        <input id="admin-rank-losses" class="admin-input" type="number" placeholder="Losses"/>
+        <input id="admin-rank-games" class="admin-input" type="number" placeholder="Games"/>
+      </div>
+      <div class="admin-row">
+        <button class="admin-btn" type="button" onclick="adminApplyRank()">Apply Rank</button>
+      </div>
+    </div>
+    <div class="admin-sec" id="admin-stats-sec">
+      <div class="admin-hint">STATSS: edit gameplay multipliers (0.5 to 3.0) for local slots and optional username profile.</div>
+      <div class="admin-row">
+        <input id="admin-stats-target" class="admin-input" placeholder="Target: SELF / P2 / BOT" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_]/g,'')"/>
+        <input id="admin-stats-user" class="admin-input" placeholder="USERNAME to save profile (optional)" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9_]/g,'')"/>
+      </div>
+      <div class="admin-row">
+        <input id="admin-st-speed" class="admin-input" type="number" step="0.05" placeholder="Speed x"/>
+        <input id="admin-st-jump" class="admin-input" type="number" step="0.05" placeholder="Jump x"/>
+        <input id="admin-st-spike" class="admin-input" type="number" step="0.05" placeholder="Spike x"/>
+      </div>
+      <div class="admin-row">
+        <input id="admin-st-set" class="admin-input" type="number" step="0.05" placeholder="Set x"/>
+        <input id="admin-st-bump" class="admin-input" type="number" step="0.05" placeholder="Bump x"/>
+        <input id="admin-st-block" class="admin-input" type="number" step="0.05" placeholder="Block x"/>
+      </div>
+      <div class="admin-row">
+        <button class="admin-btn" type="button" onclick="adminApplyStats()">Apply Stats</button>
+      </div>
+    </div>
+    <div class="admin-msg" id="admin-msg"></div>
   </div>
   <div class="ctrl-row-outer">
     <div class="cc"><h4>Movement</h4><p><span class="k">A</span> / <span class="k">D</span> move<br><span class="k">Space</span> jump<br><span class="k">F</span> serve</p></div>
@@ -660,9 +710,12 @@ let mirageUsedBySlot=[false,false,false,false];
 let mirageUntil=[0,0,0,0];
 let activeSecretCode='';
 let akaashiUnlocked=false;
+let rankAdminUnlocked=false,statsAdminUnlocked=false;
 let timeStopUntil=0,timeStopTarget=-1,timeStopCaster=-1;
 let pendingTimeStopHit=null,timeStopWasActive=false;
 let secretPanelGateOpen=false,logoTapCount=0,lastLogoTapAt=0,logoTapWindowStart=0;
+const DEF_STAT_MUL={speed:1,jump:1,spike:1,set:1,bump:1,block:1};
+let slotStatMul=[{...DEF_STAT_MUL},{...DEF_STAT_MUL},{...DEF_STAT_MUL},{...DEF_STAT_MUL}];
 
 const SCOL=[['#00d4ff','#006888'],['#00ff88','#008844'],['#ff6b3d','#882200'],['#a78bfa','#442288']];
 const SEMOJI=['🔵','🟢','🟠','🟣'];
@@ -682,14 +735,34 @@ function inRange(slot){return inRangeForSkill(slot,'bump');}
 function isWebTrapped(slot){return Date.now()<(webTrapUntil[slot]||0);}
 function isMirageAffected(slot){return Date.now()<(mirageUntil[slot]||0);}
 function hasAkaashiCode(){return activeSecretCode==='AKAASHI93';}
+function clampStatMul(v){
+  const n=Number(v);
+  if(!Number.isFinite(n))return 1;
+  return Math.max(0.5,Math.min(3,n));
+}
+function sanitizeStats(stats){
+  const src=stats&&typeof stats==='object'?stats:{};
+  return{
+    speed:clampStatMul(src.speed),
+    jump:clampStatMul(src.jump),
+    spike:clampStatMul(src.spike),
+    set:clampStatMul(src.set),
+    bump:clampStatMul(src.bump),
+    block:clampStatMul(src.block),
+  };
+}
+function getStatMul(slot,key){
+  const row=slotStatMul[slot]||DEF_STAT_MUL;
+  return clampStatMul(row[key]);
+}
 function slotOwnedByUser(slot){
   if(gmode==='online')return slot===mySlot;
   return slot===0;
 }
 function hasAkaashiBuff(slot){return hasAkaashiCode()&&slotOwnedByUser(slot);}
-function moveSpeedFor(slot){return PS*(hasAkaashiBuff(slot)?1.7:1);}
-function jumpVelocityFor(slot){return hasAkaashiBuff(slot)?JV*1.22:JV;}
-function blockRangeFor(slot){return hasAkaashiBuff(slot)?BLOCK_R*1.35:BLOCK_R;}
+function moveSpeedFor(slot){return PS*(hasAkaashiBuff(slot)?1.7:1)*getStatMul(slot,'speed');}
+function jumpVelocityFor(slot){return JV*(hasAkaashiBuff(slot)?1.22:1)*getStatMul(slot,'jump');}
+function blockRangeFor(slot){return BLOCK_R*(hasAkaashiBuff(slot)?1.35:1)*getStatMul(slot,'block');}
 function isTimeStopActive(){return Date.now()<timeStopUntil;}
 function isTimeStoppedSlot(slot){return isTimeStopActive()&&slot===timeStopTarget;}
 
