@@ -24,6 +24,15 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .logo{position:relative;z-index:3;text-align:center;margin-bottom:1rem}
 .logo h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(68px,13vw,130px);color:var(--ye);text-shadow:0 0 40px #ffcc0280,4px 4px 0 var(--ac),8px 8px 0 #ff000044;line-height:1;letter-spacing:.04em}
 .logo p{font-size:clamp(10px,1.6vw,15px);letter-spacing:.4em;text-transform:uppercase;color:#fff7;text-shadow:0 0 8px #fff5}
+#menu-logo{cursor:pointer;user-select:none}
+#menu-logo.unlock-pop{animation:unlockPop .72s cubic-bezier(.2,1.35,.25,1)}
+@keyframes unlockPop{
+  0%{transform:scale(1);filter:brightness(1)}
+  20%{transform:scale(1.08);filter:brightness(1.4)}
+  45%{transform:scale(.96);filter:brightness(1.05)}
+  70%{transform:scale(1.03)}
+  100%{transform:scale(1);filter:brightness(1)}
+}
 .menu-shell{position:relative;z-index:3;width:min(980px,94vw);background:linear-gradient(165deg,#0a1223e6,#17122ae8 55%,#20110ee8);border:1px solid #ffffff2e;border-radius:20px;padding:1.2rem 1rem .9rem;box-shadow:0 24px 60px #0009,0 0 0 1px #ffcc0214 inset;backdrop-filter:blur(10px)}
 .menu-btns{position:relative;z-index:3;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:.8rem}
 .mbtn{font-family:'Bebas Neue',sans-serif;font-size:21px;letter-spacing:.1em;padding:14px 14px;border:2px solid var(--ye);background:linear-gradient(180deg,#ffffff12,#00000030);color:var(--ye);cursor:pointer;border-radius:10px;transition:all .15s;position:relative;overflow:hidden;text-shadow:0 0 8px var(--ye)}
@@ -73,7 +82,16 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Barlow Condensed',
 .acct-actions{display:flex;gap:8px;margin-top:10px}
 .acct-btn{flex:1;padding:8px 10px;font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:.08em;border:1px solid #ffffff28;border-radius:8px;background:#ffffff10;color:#fff;cursor:pointer}
 .acct-btn.primary{border-color:var(--gr);color:var(--gr);box-shadow:0 0 12px #00ff8833}
-.secret-card{display:none;position:relative;z-index:3;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:10px 12px;margin:.7rem auto 0;width:min(460px,92vw);backdrop-filter:blur(8px)}
+.secret-card{position:relative;z-index:3;background:#ffffff0b;border:1px solid #ffffff20;border-radius:12px;padding:10px 12px;margin:.7rem auto 0;width:min(460px,92vw);backdrop-filter:blur(8px)}
+.secret-card.locked{border-color:#ffffff16;background:#ffffff06}
+.secret-card.unlock-glow{animation:secretGlow .9s ease}
+@keyframes secretGlow{
+  0%{box-shadow:0 0 0 #0000;border-color:#ffffff20}
+  25%{box-shadow:0 0 26px #ff2d7870;border-color:#ff2d78}
+  100%{box-shadow:0 0 0 #0000;border-color:#ffffff20}
+}
+.secret-card.locked .secret-title{color:#ffffff70;text-shadow:none}
+.secret-card.locked .secret-toggle{opacity:.65}
 .secret-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .secret-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.08em;color:var(--pk);text-shadow:0 0 10px #ff2d7850}
 .secret-toggle{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.08em;border:1px solid #ffffff33;border-radius:6px;background:#ffffff12;color:#fff;padding:4px 10px;cursor:pointer}
@@ -245,7 +263,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
 <div id="screen-menu" class="screen">
   <div class="mbg"></div><div class="msand"></div><div class="mnet"></div>
   <div class="menu-shell">
-  <div class="logo"><h1>SPIKE!</h1><p>Beach Volleyball</p></div>
+  <div class="logo"><h1 id="menu-logo">SPIKE!</h1><p>Beach Volleyball</p></div>
   <div class="menu-btns">
     <button class="mbtn online" onclick="showLobby()">Online Multiplayer<small>Create or join a room</small></button>
     <button class="mbtn" onclick="startLocal('ai')">vs BOT<small>Solo match and rating climbs</small></button>
@@ -277,7 +295,7 @@ body.mobile-mode.mobile-landscape .mctl.wide{width:56px}
       <button class="acct-btn" onclick="logoutAccount()" id="acct-logout-btn" style="display:none">Logout</button>
     </div>
   </div>
-  <div class="secret-card" id="secret-card">
+  <div class="secret-card locked" id="secret-card">
     <div class="secret-head">
       <div class="secret-title">Secret Code</div>
       <button class="secret-toggle" type="button" onclick="toggleSecretPanel()">Open</button>
@@ -549,6 +567,11 @@ let localStats={spikes:[0,0],blocks:[0,0],aces:[0,0],longestRally:0};
 let oracleUnlocked=false,oracleUsedThisMatch=false;
 let webTrapUntil=[0,0,0,0];
 try{oracleUnlocked=localStorage.getItem('spike.secret.oracle_m4')==='1';}catch(e){}
+let mirageUnlocked=false;
+try{mirageUnlocked=localStorage.getItem('spike.secret.mirage_83')==='1';}catch(e){}
+let mirageUsedBySlot=[false,false,false,false];
+let mirageUntil=[0,0,0,0];
+let secretPanelGateOpen=false,logoTapCount=0,lastLogoTapAt=0,logoTapWindowStart=0;
 
 const SCOL=[['#00d4ff','#006888'],['#00ff88','#008844'],['#ff6b3d','#882200'],['#a78bfa','#442288']];
 const SEMOJI=['🔵','🟢','🟠','🟣'];
@@ -566,6 +589,7 @@ function inRangeForSkill(slot,skill){
 }
 function inRange(slot){return inRangeForSkill(slot,'bump');}
 function isWebTrapped(slot){return Date.now()<(webTrapUntil[slot]||0);}
+function isMirageAffected(slot){return Date.now()<(mirageUntil[slot]||0);}
 
 let spikeHeld=[false,false,false,false];
 let spikeFired=[false,false,false,false];
@@ -930,10 +954,12 @@ document.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(localSlots().includes(0)){
     if(k==='y')activateOracleWeb();
+    if(k==='u')activateMirage();
     if(k==='e')startCharge(0,'bump');if(k==='q')startCharge(0,'set');
     if(k==='t')startCharge(0,'tip');if(k==='r')startCharge(0,'block');
   }
   if(localSlots().includes(2)){
+    if(k==='u')activateMirage();
     if(gmode==='online'){
       if(k==='e')startCharge(2,'bump');if(k==='q')startCharge(2,'set');
       if(k==='t')startCharge(2,'tip');if(k==='r')startCharge(2,'block');
@@ -1150,6 +1176,7 @@ function showLeaderboardScreen(){
 function toggleSecretPanel(){
   const card=document.getElementById('secret-card');
   if(!card)return;
+  if(!secretPanelGateOpen){setSecretMessage('Access locked. Tap SPIKE! 5 times quickly.',true);return;}
   card.classList.toggle('open');
   const btn=card.querySelector('.secret-toggle');
   if(btn)btn.textContent=card.classList.contains('open')?'Close':'Open';
@@ -1161,11 +1188,25 @@ function setSecretMessage(msg,isErr=false){
   el.style.color=isErr?'#ff6b6b':'#fff8';
 }
 function updateSecretPanelStatus(){
-  setSecretMessage(oracleUnlocked?'ORACLE_M4 unlocked. Press Y in-match (once).':'No active codes configured yet.');
+  const card=document.getElementById('secret-card');
+  if(card)card.classList.toggle('locked',!secretPanelGateOpen);
+  if(!secretPanelGateOpen){
+    setSecretMessage('Access locked. Tap SPIKE! 5 times quickly.',true);
+    return;
+  }
+  const unlocked=[];
+  if(oracleUnlocked)unlocked.push('ORACLE_M4');
+  if(mirageUnlocked)unlocked.push('MIRAGE_83');
+  if(unlocked.length){
+    setSecretMessage(`Unlocked: ${unlocked.join(', ')}`);
+    return;
+  }
+  setSecretMessage('No active codes configured yet.');
 }
 function applySecretCode(){
   const input=document.getElementById('secret-input');
   if(!input)return;
+  if(!secretPanelGateOpen){setSecretMessage('Panel is locked.',true);return;}
   const code=(input.value||'').trim().toUpperCase();
   if(!code){setSecretMessage('Enter a code first.',true);return;}
   if(code==='ORACLE_M4'){
@@ -1175,7 +1216,58 @@ function applySecretCode(){
     updateSecretPanelStatus();
     return;
   }
+  if(code==='MIRAGE_83'){
+    mirageUnlocked=true;
+    try{localStorage.setItem('spike.secret.mirage_83','1');}catch(e){}
+    input.value='';
+    updateSecretPanelStatus();
+    return;
+  }
   setSecretMessage('Invalid code.',true);
+}
+function runSecretUnlockFx(){
+  const logo=document.getElementById('menu-logo');
+  const card=document.getElementById('secret-card');
+  if(logo){
+    logo.classList.remove('unlock-pop');
+    void logo.offsetWidth;
+    logo.classList.add('unlock-pop');
+    setTimeout(()=>logo.classList.remove('unlock-pop'),760);
+  }
+  if(card){
+    card.classList.remove('unlock-glow');
+    void card.offsetWidth;
+    card.classList.add('unlock-glow');
+    setTimeout(()=>card.classList.remove('unlock-glow'),920);
+  }
+  try{
+    playTone(660,0.08,'sine',0.2);
+    setTimeout(()=>playTone(880,0.1,'sine',0.18),80);
+    setTimeout(()=>playTone(1100,0.14,'sine',0.16),170);
+  }catch(e){}
+}
+function onMenuLogoTap(){
+  if(secretPanelGateOpen)return;
+  const now=Date.now();
+  if(now-lastLogoTapAt>750){
+    logoTapCount=0;
+    logoTapWindowStart=now;
+  }
+  lastLogoTapAt=now;
+  if(!logoTapWindowStart)logoTapWindowStart=now;
+  if(now-logoTapWindowStart>3200){
+    logoTapCount=0;
+    logoTapWindowStart=now;
+  }
+  logoTapCount++;
+  if(logoTapCount>=5){
+    secretPanelGateOpen=true;
+    logoTapCount=0;
+    logoTapWindowStart=0;
+    setHm('Secret panel unlocked.');
+    updateSecretPanelStatus();
+    runSecretUnlockFx();
+  }
 }
 function switchAuthTab(mode){
   authMode=mode;
@@ -1573,6 +1665,11 @@ function fbListenState(){
         score=[d.sc0||0,d.sc1||0];sets=[d.st0||0,d.st1||0];
         updateHUD();showLocalStats(d.win);
       }
+      if(d.type==='mirage'){
+        if(typeof d.target==='number'&&mySlot===d.target){
+          mirageUntil[mySlot]=Date.now()+Math.max(1000,Math.min(12000,d.dur||7000));
+        }
+      }
     });
     fbListeners.push(()=>evtRef.off('value',off2));
   }
@@ -1604,6 +1701,11 @@ function applyGuestAction(a){
   }
   if(a.type==='spike'&&phase==='playing'&&!p.onGround)doHitLocal(2,0.9,'spike');
   if(a.type==='skill'&&phase==='playing')doHitLocal(2,a.pwr,a.skill);
+  if(a.type==='mirage'&&phase==='playing'&&mirageUnlocked&&!mirageUsedBySlot[2]){
+    const dur=7000;
+    applyMirageEffect(2,dur);
+    fbPushEvent({type:'mirage',target:0,dur});
+  }
   if(a.type==='serve'&&phase==='waiting'&&serving===2){
     phase='playing';hideOv();setHm('');
     lastHitSlot=-1;ball.vx=0;ball.vy=-(11+Math.random()*2);
@@ -1653,6 +1755,7 @@ function clearTransientMatchState(){
   parts=[];
   ballTrail=[];
   webTrapUntil=[0,0,0,0];
+  mirageUntil=[0,0,0,0];
 }
 
 function activateOracleWeb(){
@@ -1671,6 +1774,29 @@ function activateOracleWeb(){
   spawnParts(target.x+PW/2,target.y+PH*0.45,'#d8e1f2',26);
   doFlash('ORACLE WEB','#d8e1f2',720,true);
   setHm(`ORACLE WEB active for ${(dur/1000).toFixed(1)}s (used).`);
+}
+
+function applyMirageEffect(casterSlot,durMs=7000){
+  const targetSlot=slotSide(casterSlot)===0?2:0;
+  mirageUntil[targetSlot]=Date.now()+durMs;
+  mirageUsedBySlot[casterSlot]=true;
+  if(targetSlot===mySlot)setHm(`MIRAGE active: fake balls for ${(durMs/1000).toFixed(1)}s`);
+}
+
+function activateMirage(){
+  if(!mirageUnlocked){setHm('MIRAGE_83 is locked. Use secret code first.');return;}
+  if(phase!=='playing'){setHm('MIRAGE can only be used during a rally.');return;}
+  if(gmode!=='online'){setHm('MIRAGE_83 currently works in online matches only.');return;}
+  if(mySlot!==0&&mySlot!==2){return;}
+  if(mirageUsedBySlot[mySlot]){setHm('MIRAGE already used this match.');return;}
+  const dur=7000;
+  if(mySlot===0){
+    applyMirageEffect(0,dur);
+    fbPushEvent({type:'mirage',target:2,dur});
+  }else{
+    fbSendAction({type:'mirage'});
+  }
+  doFlash('MIRAGE','#7ce7ff',620,true);
 }
 
 function doRematch(){
@@ -2410,6 +2536,7 @@ function launchGame(mode,lm){
   gmode=mode;lmode=lm||'1v1';
   clearTransientMatchState();
   oracleUsedThisMatch=false;
+  mirageUsedBySlot=[false,false,false,false];
   webTrapUntil=[0,0,0,0];
   aiState={blocking:false,blockCool:0,jumpScheduled:false};
   score=[0,0];sets=[0,0];serving=0;sideHits=[0,0];lastHitSide=-1;rallyHits=0;lastHitSlot=-1;
@@ -2517,6 +2644,7 @@ function draw(){
   PL.forEach((p,i)=>{if(p)drawPlayer(p,SCOL[i][0],SCOL[i][1]);});
   PL.forEach((p,i)=>{if(p&&isWebTrapped(i))drawWebTrap(p);});
   drawBall();drawParts();
+  drawMirageBalls();
 
   if(phase==='playing'){
     const bs=ball.x<_nx?0:1,hn=sideHits[bs];
@@ -2660,6 +2788,31 @@ function drawBall(){
   cx.restore();
 }
 
+function drawMirageBalls(){
+  if(gmode!=='online')return;
+  if(mySlot!==0&&mySlot!==2)return;
+  if(!isMirageAffected(mySlot))return;
+  const t=Date.now()*0.005;
+  const ox1=18*Math.sin(t*1.4),oy1=8*Math.cos(t*1.9);
+  const ox2=-16*Math.cos(t*1.2),oy2=10*Math.sin(t*1.6);
+  [
+    {x:ball.x+ox1,y:ball.y+oy1,a:0.45},
+    {x:ball.x+ox2,y:ball.y+oy2,a:0.4}
+  ].forEach(v=>{
+    cx.save();
+    cx.globalAlpha=v.a;
+    cx.translate(v.x,v.y);
+    cx.strokeStyle='#7ce7ff';
+    cx.fillStyle='rgba(124,231,255,0.18)';
+    cx.shadowColor='#7ce7ff';
+    cx.shadowBlur=12;
+    cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.fill();
+    cx.lineWidth=1.2;
+    cx.beginPath();cx.arc(0,0,BR*0.95,0,Math.PI*2);cx.stroke();
+    cx.restore();
+  });
+}
+
 let lastTs=0;
 function loop(ts){
   animId=requestAnimationFrame(loop);
@@ -2674,6 +2827,13 @@ function loop(ts){
 resize();
 updateAccountUI();
 updateSecretPanelStatus();
+const menuLogo=document.getElementById('menu-logo');
+if(menuLogo){
+  menuLogo.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    onMenuLogoTap();
+  });
+}
 switchAuthTab('signup');
 fbInit();
 </script>
